@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: TeaHomeService
+  datasource:
+    url: ${TEAHOME_DB_URL:jdbc:postgresql://192.168.5.156:5432/teahome_dev}
+    username: ${TEAHOME_DB_USER:teahome_dev}
+    password: ${TEAHOME_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${TEAHOME_DB_POOL_MAX:10}
+      minimum-idle: 2
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:false}
+    locations: classpath:db/migration
+  jackson:
+    time-zone: UTC
+    default-property-inclusion: non_null
+
+server:
+  port: ${TEAHOME_HTTP_PORT:8080}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO

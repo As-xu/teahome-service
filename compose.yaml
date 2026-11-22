@@ -1,0 +1,86 @@
+name: teahome
+
+services:
+  teahome-db:
+    image: postgres:16-alpine
+    container_name: teahome-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: teahome
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_super
+      TZ: UTC
+    secrets: [pg_super, db_app, db_migrate, db_dev]
+    ports:
+      - "192.168.5.156:5432:5432"
+    volumes:
+      - /opt/teahome/data/pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    shm_size: 512mb
+    command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB", "-c", "timezone=UTC"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d teahome"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  teahome-migrate:
+    image: teahome-service:${API_TAG:-dev}
+    profiles: ["migrate"]
+    restart: "no"
+    depends_on:
+      teahome-db:
+        condition: service_healthy
+    env_file: /opt/teahome/env/.env
+    environment:
+      TEAHOME_ROLE: migrate
+      SPRING_FLYWAY_ENABLED: "true"
+      TEAHOME_DB_USER: teahome_migrate
+      TEAHOME_DB_PASSWORD_FILE: /run/secrets/db_migrate
+      TZ: UTC
+    secrets: [db_migrate]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  teahome-api:
+    image: teahome-service:${API_TAG:-dev}
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      teahome-db:
+        condition: service_healthy
+    env_file: /opt/teahome/env/.env
+    environment:
+      TEAHOME_ROLE: api
+      SPRING_FLYWAY_ENABLED: "false"
+      TEAHOME_DB_USER: teahome_app
+      TEAHOME_DB_PASSWORD_FILE: /run/secrets/db_app
+      TZ: UTC
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:+UseSerialGC -XX:-UsePerfData"
+    secrets: [db_app]
+    ports:
+      - "192.168.5.156:18080:8080"
+    volumes:
+      - /opt/teahome/images:/data/images
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: "2.0"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+secrets:
+  pg_super:   { file: /opt/teahome/secrets/pg_super }
+  db_app:     { file: /opt/teahome/secrets/db_app }
+  db_migrate: { file: /opt/teahome/secrets/db_migrate }
+  db_dev:     { file: /opt/teahome/secrets/db_dev }
