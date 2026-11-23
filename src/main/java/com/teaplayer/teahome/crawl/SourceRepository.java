@@ -41,6 +41,25 @@ public class SourceRepository {
                 .list();
     }
 
+    public Optional<SourceRow> findById(String id) {
+        return jdbc.sql("""
+                        SELECT id, name, kind, base_url, spec, priority, allow_hosts
+                          FROM teaplayer_source
+                         WHERE id = :id
+                           AND deleted_at IS NULL
+                        """)
+                .param("id", id)
+                .query((rs, rowNum) -> new SourceRow(
+                        rs.getString("id"),
+                        rs.getString("name"),
+                        rs.getString("kind"),
+                        rs.getString("base_url"),
+                        parseSpec(rs.getString("spec")),
+                        rs.getInt("priority"),
+                        strings(rs.getArray("allow_hosts"))))
+                .optional();
+    }
+
     private JsonNode parseSpec(String json) {
         try {
             return mapper.readTree(json);

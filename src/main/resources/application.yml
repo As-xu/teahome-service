@@ -30,6 +30,8 @@ teahome:
   scheduling-enabled: ${TEAHOME_SCHEDULING_ENABLED:true}
   token:
     bootstrap: ${TEAHOME_BOOTSTRAP_TOKEN:}
+  image:
+    dir: ${TEAHOME_IMAGE_DIR:/data/images}
   crawl:
     enabled: ${TEAHOME_CRAWL_ENABLED:true}
     ttl-days: ${TEAHOME_TTL_DAYS:8}

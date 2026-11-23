@@ -1,10 +1,13 @@
 package com.teaplayer.teahome.crawl;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -168,13 +171,13 @@ public class ItemWriter {
                             (source_id, item_id, title, title_norm, merge_key, year,
                              category_codes, primary_category, category_raw, category_source,
                              classifier_version, content_hash, play_hash, vod_time, expires_at,
-                             ttl_days_applied, status, group_id, cover_url, remark, area, lang,
+                             ttl_days_applied, status, group_id, cover_url, cover_key, remark, area, lang,
                              extra, first_seen_at, updated_at)
                         VALUES
                             (:sourceId, :itemId, :title, :titleNorm, :mergeKey, :year,
                              CAST(:codes AS text[]), :primary, :rawCategory, :categorySource,
                              :classifierVersion, :hash, :playHash, :vodTime, :expiresAt,
-                             :ttlDays, 'active', :groupId, :cover, :remark, :area, :lang,
+                             :ttlDays, 'active', :groupId, :cover, :coverKey, :remark, :area, :lang,
                              CAST(:extra AS jsonb), :now, :now)
                         RETURNING id
                         """)
@@ -196,6 +199,7 @@ public class ItemWriter {
                 .param("ttlDays", ttlDays)
                 .param("groupId", groupId)
                 .param("cover", blankToNull(raw.cover()))
+                .param("coverKey", key(raw.cover()))
                 .param("remark", blankToNull(raw.remark()))
                 .param("area", blankToNull(raw.area()))
                 .param("lang", blankToNull(raw.lang()))
@@ -217,7 +221,7 @@ public class ItemWriter {
                                category_source = :categorySource, classifier_version = :classifierVersion,
                                content_hash = :hash, play_hash = :playHash, vod_time = :vodTime,
                                expires_at = :expiresAt, ttl_days_applied = :ttlDays, status = 'active',
-                               group_id = :groupId, cover_url = :cover, remark = :remark,
+                               group_id = :groupId, cover_url = :cover, cover_key = :coverKey, remark = :remark,
                                area = :area, lang = :lang, extra = CAST(:extra AS jsonb),
                                updated_at = CASE WHEN :changed THEN :now ELSE updated_at END
                          WHERE id = :id
@@ -238,6 +242,7 @@ public class ItemWriter {
                 .param("ttlDays", ttlDays)
                 .param("groupId", groupId)
                 .param("cover", blankToNull(raw.cover()))
+                .param("coverKey", key(raw.cover()))
                 .param("remark", blankToNull(raw.remark()))
                 .param("area", blankToNull(raw.area()))
                 .param("lang", blankToNull(raw.lang()))
@@ -257,12 +262,12 @@ public class ItemWriter {
         return jdbc.sql("""
                         INSERT INTO teaplayer_title_group
                             (merge_key, merge_key_version, title, title_norm, year, category_codes,
-                             primary_category, category_source, cover_url, remark,
+                             primary_category, category_source, cover_url, cover_key, remark,
                              vod_time_max, first_seen_at, last_seen_at, expires_at,
                              classifier_version, revision)
                         VALUES
                             (:mergeKey, 'title-year-v1', :title, :titleNorm, :year, CAST(:codes AS text[]),
-                             :primary, 'primary', :cover, :remark,
+                             :primary, 'primary', :cover, :coverKey, :remark,
                              :vodTime, :now, :now, :expiresAt,
                              :classifierVersion, 1)
                         ON CONFLICT (merge_key) DO UPDATE SET last_seen_at = now()
@@ -275,6 +280,7 @@ public class ItemWriter {
                 .param("codes", arrayLiteral(category.codes()))
                 .param("primary", category.primary())
                 .param("cover", blankToNull(raw.cover()))
+                .param("coverKey", key(raw.cover()))
                 .param("remark", blankToNull(raw.remark()))
                 .param("vodTime", ts(raw.vodTime()))
                 .param("now", ts(now))
@@ -404,7 +410,7 @@ public class ItemWriter {
         }
         Primary primary = jdbc.sql("""
                         SELECT i.id, i.source_id, i.title, i.title_norm, i.year, i.category_codes,
-                               i.primary_category, i.cover_url, i.remark, i.classifier_version
+                               i.primary_category, i.cover_url, i.cover_key, i.remark, i.classifier_version
                           FROM teaplayer_source_item i
                           JOIN teaplayer_source s ON s.id = i.source_id
                          WHERE i.group_id = :groupId AND i.status = 'active'
@@ -421,6 +427,7 @@ public class ItemWriter {
                         codesOf(rs.getArray("category_codes")),
                         rs.getString("primary_category"),
                         rs.getString("cover_url"),
+                        rs.getString("cover_key"),
                         rs.getString("remark"),
                         rs.getString("classifier_version")))
                 .single();
@@ -431,7 +438,7 @@ public class ItemWriter {
                                                      THEN category_codes ELSE CAST(:codes AS text[]) END,
                                primary_category = CASE WHEN category_source = 'manual'
                                                        THEN primary_category ELSE :primary END,
-                               cover_url = :cover, remark = :remark,
+                               cover_url = :cover, cover_key = :coverKey, remark = :remark,
                                primary_item_id = :primaryItemId,
                                primary_source_id = :primarySourceId,
                                item_count = :itemCount, source_count = :sourceCount,
@@ -449,6 +456,7 @@ public class ItemWriter {
                 .param("codes", arrayLiteral(primary.codes()))
                 .param("primary", primary.primaryCategory())
                 .param("cover", primary.cover())
+                .param("coverKey", primary.coverKey())
                 .param("remark", primary.remark())
                 .param("primaryItemId", primary.itemId())
                 .param("primarySourceId", primary.sourceId())
@@ -559,6 +567,18 @@ public class ItemWriter {
         return value == null ? "" : value;
     }
 
+    private static String key(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(url.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static String urlHost(String url) {
         try {
             return URI.create(url).getHost();
@@ -595,7 +615,7 @@ public class ItemWriter {
     }
 
     private record Primary(long itemId, String sourceId, String title, String titleNorm, Short year,
-                           List<String> codes, String primaryCategory, String cover,
+                           List<String> codes, String primaryCategory, String cover, String coverKey,
                            String remark, String classifierVersion) {
     }
 

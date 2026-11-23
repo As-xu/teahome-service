@@ -82,6 +82,13 @@ public class MacCmsClient {
         return out;
     }
 
+    public List<RawItem> search(SourceRow source, SourceSpec spec, String keyword) {
+        String url = source.baseUrl() + "?ac=list&wd="
+                + java.net.URLEncoder.encode(keyword, java.nio.charset.StandardCharsets.UTF_8);
+        JsonNode root = getJson(url, source);
+        return parseItems(root, spec, Instant.now());
+    }
+
     List<RawItem> parseItems(JsonNode root, SourceSpec spec, Instant fallbackNow) {
         JsonNode list = spec.itemsPath().isBlank() ? root : root.path(spec.itemsPath());
         if (!list.isArray()) {

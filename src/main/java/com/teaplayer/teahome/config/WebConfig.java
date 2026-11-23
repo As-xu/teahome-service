@@ -1,5 +1,6 @@
 package com.teaplayer.teahome.config;
 
+import com.teaplayer.teahome.api.RateLimitFilter;
 import com.teaplayer.teahome.auth.ApiTokenService;
 import com.teaplayer.teahome.auth.TokenAuthFilter;
 
@@ -17,6 +18,15 @@ public class WebConfig {
                 new FilterRegistrationBean<>(new TokenAuthFilter(tokenService));
         registration.addUrlPatterns("/v1", "/v1/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
+        return registration;
+    }
+
+    @Bean
+    FilterRegistrationBean<RateLimitFilter> rateLimitFilter() {
+        FilterRegistrationBean<RateLimitFilter> registration =
+                new FilterRegistrationBean<>(new RateLimitFilter());
+        registration.addUrlPatterns("/v1", "/v1/*");
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
         return registration;
     }
 }
