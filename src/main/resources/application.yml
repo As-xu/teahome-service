@@ -25,6 +25,14 @@ server:
 teahome:
   token:
     bootstrap: ${TEAHOME_BOOTSTRAP_TOKEN:}
+  crawl:
+    enabled: ${TEAHOME_CRAWL_ENABLED:true}
+    ttl-days: ${TEAHOME_TTL_DAYS:8}
+    hourly-window-hours: 3
+    daily-window-hours: 192
+    detail-batch-size: 20
+    max-pages: 200
+    request-interval-ms: 300
 
 management:
   endpoints:
