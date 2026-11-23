@@ -25,7 +25,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@WebMvcTest(MetaController.class)
+@WebMvcTest({MetaController.class, HealthController.class})
 @Import(TokenAuthFilter.class)
 class MetaControllerTest {
 
@@ -84,8 +84,9 @@ class MetaControllerTest {
 
     @Test
     void healthEndpointIsNotBehindTokenGate() throws Exception {
-        mockMvc.perform(get("/actuator/health"))
-                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
     }
 
     private static TokenPrincipal principal(String... scopes) {
