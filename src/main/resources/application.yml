@@ -18,6 +18,13 @@ spring:
 server:
   port: ${TEAHOME_HTTP_PORT:8080}
   shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+teahome:
+  token:
+    bootstrap: ${TEAHOME_BOOTSTRAP_TOKEN:}
 
 management:
   endpoints:

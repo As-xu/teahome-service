@@ -59,9 +59,10 @@ services:
       SPRING_FLYWAY_ENABLED: "false"
       TEAHOME_DB_USER: teahome_app
       TEAHOME_DB_PASSWORD_FILE: /run/secrets/db_app
+      TEAHOME_BOOTSTRAP_TOKEN_FILE: /run/secrets/bootstrap_token
       TZ: UTC
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:+UseSerialGC -XX:-UsePerfData"
-    secrets: [db_app]
+    secrets: [db_app, bootstrap_token]
     ports:
       - "192.168.5.156:18080:8080"
     volumes:
@@ -85,3 +86,4 @@ secrets:
   db_app:     { file: /opt/teahome/secrets/db_app }
   db_migrate: { file: /opt/teahome/secrets/db_migrate }
   db_dev:     { file: /opt/teahome/secrets/db_dev }
+  bootstrap_token: { file: /opt/teahome/secrets/bootstrap_token }

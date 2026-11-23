@@ -1,7 +1,18 @@
 #!/bin/sh
 set -eu
-if [ -n "${TEAHOME_DB_PASSWORD_FILE:-}" ] && [ -z "${TEAHOME_DB_PASSWORD:-}" ]; then
-  TEAHOME_DB_PASSWORD="$(cat "$TEAHOME_DB_PASSWORD_FILE")"
-  export TEAHOME_DB_PASSWORD
-fi
+
+read_secret() {
+  var="$1"
+  file_var="${var}_FILE"
+  eval "file=\${$file_var:-}"
+  eval "current=\${$var:-}"
+  if [ -n "$file" ] && [ -z "$current" ]; then
+    value="$(cat "$file")"
+    export "$var=$value"
+  fi
+}
+
+read_secret TEAHOME_DB_PASSWORD
+read_secret TEAHOME_BOOTSTRAP_TOKEN
+
 exec java -jar /app/app.jar "$@"
