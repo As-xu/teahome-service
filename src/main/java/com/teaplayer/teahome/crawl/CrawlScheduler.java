@@ -38,7 +38,7 @@ public class CrawlScheduler {
     @Scheduled(cron = "0 35 * * * *", zone = "Asia/Shanghai")
     public void retention() {
         try {
-            service.retention();
+            service.retention("scheduler");
         } catch (RuntimeException e) {
             log.error("过期清理失败", e);
         }

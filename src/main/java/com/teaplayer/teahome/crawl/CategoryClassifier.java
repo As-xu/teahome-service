@@ -71,7 +71,7 @@ public class CategoryClassifier {
     public Result classify(String rawCategory) {
         String name = TitleNormalizer.forCategory(rawCategory);
         if (name.isEmpty()) {
-            return new Result(List.of(), null, "unmapped");
+            return new Result(List.of("other"), "other", "unmapped");
         }
         Set<String> hits = new LinkedHashSet<>();
         for (Rule rule : rules) {
@@ -80,7 +80,7 @@ public class CategoryClassifier {
             }
         }
         if (hits.isEmpty()) {
-            return new Result(List.of(), null, "unmapped");
+            return new Result(List.of("other"), "other", "unmapped");
         }
         List<String> codes = new ArrayList<>(hits);
         codes.sort(Comparator.comparingInt(ORDER::indexOf));

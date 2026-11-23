@@ -28,7 +28,9 @@ public final class TtlPolicy {
         return oldHash == null || !oldHash.equals(newHash);
     }
 
-    public static Instant renewedExpiry(Instant oldExpires, Instant computed) {
-        return oldExpires != null && oldExpires.isAfter(computed) ? oldExpires : computed;
+    /** 内容真正变化时重置为 now+ttl；旧值更晚则保留旧值，绝不缩短。 */
+    public static Instant renewedExpiry(Instant oldExpires, Instant now, int ttlDays) {
+        Instant reset = now.plus(Duration.ofDays(ttlDays));
+        return oldExpires != null && oldExpires.isAfter(reset) ? oldExpires : reset;
     }
 }

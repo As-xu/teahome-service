@@ -1,6 +1,8 @@
 package com.teaplayer.teahome.crawl;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -13,6 +15,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -22,7 +25,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** MacCMS 接口客户端：列表、批量详情、礼貌节流。 */
+/** MacCMS 接口客户端：列表、批量详情、allow_hosts 校验、重试与礼貌节流。 */
 @Component
 public class MacCmsClient {
 
@@ -30,6 +33,8 @@ public class MacCmsClient {
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private static final DateTimeFormatter VOD_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String USER_AGENT = "TeaHomeService/0.1 (+lan)";
+    private static final int MAX_BODY_BYTES = 8 * 1024 * 1024;
+    private static final int ATTEMPTS = 3;
 
     private final ObjectMapper mapper;
     private final CrawlProperties props;
@@ -40,7 +45,7 @@ public class MacCmsClient {
         this.props = props;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }
 
@@ -51,7 +56,7 @@ public class MacCmsClient {
                 "keyword", "");
         String url = source.baseUrl() + spec.url("list", vars);
         url = url + (url.contains("?") ? "&" : "?") + "h=" + windowHours;
-        JsonNode root = getJson(url);
+        JsonNode root = getJson(url, source);
         int pageCount = root.path("pagecount").asInt(1);
         List<RawItem> items = parseItems(root, spec, Instant.now());
         return new MacCmsPage(items, page, pageCount, root.path("total").asInt(items.size()));
@@ -65,7 +70,7 @@ public class MacCmsClient {
                 "ids", String.join(",", ids),
                 "keyword", "",
                 "page", ""));
-        JsonNode root = getJson(url);
+        JsonNode root = getJson(url, source);
         List<RawItem> items = parseItems(root, spec, Instant.now());
         Map<String, RawItem> out = new LinkedHashMap<>();
         for (RawItem item : items) {
@@ -110,36 +115,97 @@ public class MacCmsClient {
         return out;
     }
 
-    private JsonNode getJson(String url) {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(25))
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json")
-                .GET()
-                .build();
-        try {
-            HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("HTTP " + response.statusCode() + " " + url);
+    private JsonNode getJson(String url, SourceRow source) {
+        URI uri = URI.create(url);
+        String host = uri.getHost();
+        if (host == null || !source.allows(host) || isPrivateHost(host)) {
+            throw new IllegalStateException("上游主机不在 allow_hosts 内: " + host);
+        }
+        for (int attempt = 1; attempt <= ATTEMPTS; attempt++) {
+            try {
+                HttpRequest request = HttpRequest.newBuilder(uri)
+                        .timeout(Duration.ofSeconds(25))
+                        .header("User-Agent", USER_AGENT)
+                        .header("Accept", "application/json")
+                        .GET()
+                        .build();
+                HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                int code = response.statusCode();
+                if (code < 200 || code >= 300) {
+                    response.body().close();
+                    if (code >= 500 && attempt < ATTEMPTS) {
+                        sleep(300L * attempt);
+                        continue;
+                    }
+                    throw new IllegalStateException("上游 HTTP " + code + " host=" + host);
+                }
+                byte[] body = readLimited(response.body());
+                JsonNode root = mapper.readTree(body);
+                pause();
+                return root;
+            } catch (IOException e) {
+                if (attempt < ATTEMPTS) {
+                    sleep(300L * attempt);
+                    continue;
+                }
+                throw new IllegalStateException("上游请求失败 host=" + host + ": " + e.getClass().getSimpleName(), e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("请求被中断 host=" + host, e);
             }
-            JsonNode root = mapper.readTree(response.body());
-            pause();
-            return root;
-        } catch (IOException e) {
-            throw new IllegalStateException("请求失败 " + url + ": " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("请求被中断 " + url, e);
+        }
+        throw new IllegalStateException("上游请求失败 host=" + host);
+    }
+
+    private static byte[] readLimited(InputStream in) throws IOException {
+        try (in) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream(64 * 1024);
+            byte[] buffer = new byte[64 * 1024];
+            int total = 0;
+            int n;
+            while ((n = in.read(buffer)) >= 0) {
+                total += n;
+                if (total > MAX_BODY_BYTES) {
+                    throw new IOException("响应超过 " + MAX_BODY_BYTES + " 字节");
+                }
+                out.write(buffer, 0, n);
+            }
+            return out.toByteArray();
+        }
+    }
+
+    private static boolean isPrivateHost(String host) {
+        String h = host.toLowerCase(Locale.ROOT);
+        if ("localhost".equals(h) || h.endsWith(".local") || "::1".equals(h)
+                || (h.contains(":") && (h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")))) {
+            return true;
+        }
+        String[] parts = h.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        try {
+            int a = Integer.parseInt(parts[0]);
+            int b = Integer.parseInt(parts[1]);
+            return a == 10 || a == 127 || a == 0
+                    || (a == 192 && b == 168)
+                    || (a == 172 && b >= 16 && b <= 31)
+                    || (a == 169 && b == 254);
+        } catch (NumberFormatException e) {
+            return false;
         }
     }
 
     private void pause() {
-        int ms = props.getRequestIntervalMs();
-        if (ms <= 0) {
+        sleep(props.getRequestIntervalMs());
+    }
+
+    private static void sleep(long millis) {
+        if (millis <= 0) {
             return;
         }
         try {
-            Thread.sleep(ms);
+            Thread.sleep(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

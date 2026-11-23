@@ -29,7 +29,7 @@ public class ApiTokenService {
         }
         String hash = TokenHasher.sha256Hex(rawToken);
         Optional<TokenPrincipal> found = jdbc.sql("""
-                        SELECT id, label, scopes, status, expires_at
+                        SELECT id, label, scopes, status, expires_at, revoked_at
                           FROM teaplayer_api_token
                          WHERE token_hash = :hash
                         """)
@@ -39,7 +39,8 @@ public class ApiTokenService {
                         rs.getString("label"),
                         toArray(rs.getArray("scopes")),
                         rs.getString("status"),
-                        rs.getObject("expires_at", OffsetDateTime.class)))
+                        rs.getObject("expires_at", OffsetDateTime.class),
+                        rs.getObject("revoked_at", OffsetDateTime.class)))
                 .optional();
 
         if (found.isEmpty()) {

@@ -35,8 +35,11 @@ public class BootstrapTokenInitializer implements ApplicationRunner {
             return;
         }
         String token = bootstrapToken.trim();
+        if (token.length() < 32) {
+            throw new IllegalStateException("TEAHOME_BOOTSTRAP_TOKEN 至少需要 32 个字符");
+        }
         String hash = TokenHasher.sha256Hex(token);
-        String prefix = token.substring(0, Math.min(8, token.length()));
+        String prefix = hash.substring(0, 8);
         try {
             int inserted = jdbc.sql("""
                             INSERT INTO teaplayer_api_token

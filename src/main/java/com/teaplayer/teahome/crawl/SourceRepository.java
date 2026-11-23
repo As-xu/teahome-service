@@ -1,6 +1,7 @@
 package com.teaplayer.teahome.crawl;
 
-import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -21,7 +22,7 @@ public class SourceRepository {
         this.mapper = mapper;
     }
 
-    public java.util.List<SourceRow> enabledSources() {
+    public List<SourceRow> enabledSources() {
         return jdbc.sql("""
                         SELECT id, name, kind, base_url, spec, priority, allow_hosts
                           FROM teaplayer_source
@@ -35,7 +36,8 @@ public class SourceRepository {
                         rs.getString("kind"),
                         rs.getString("base_url"),
                         parseSpec(rs.getString("spec")),
-                        rs.getInt("priority")))
+                        rs.getInt("priority"),
+                        strings(rs.getArray("allow_hosts"))))
                 .list();
     }
 
@@ -44,6 +46,21 @@ public class SourceRepository {
             return mapper.readTree(json);
         } catch (RuntimeException e) {
             throw new IllegalStateException("源规格不是合法 JSON", e);
+        }
+    }
+
+    private static List<String> strings(java.sql.Array array) {
+        if (array == null) {
+            return List.of();
+        }
+        try {
+            Object value = array.getArray();
+            if (value instanceof String[] values) {
+                return List.of(values);
+            }
+            return List.of();
+        } catch (java.sql.SQLException e) {
+            return List.of();
         }
     }
 
@@ -94,10 +111,5 @@ public class SourceRepository {
             return null;
         }
         return value.length() <= max ? value : value.substring(0, max);
-    }
-
-    /** 供测试/诊断；未使用时保留时间类型以便日志。 */
-    public static String describe(OffsetDateTime time) {
-        return time == null ? "-" : time.toString();
     }
 }

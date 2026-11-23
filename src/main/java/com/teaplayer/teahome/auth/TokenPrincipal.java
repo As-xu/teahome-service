@@ -9,7 +9,8 @@ public record TokenPrincipal(
         String label,
         String[] scopes,
         String status,
-        OffsetDateTime expiresAt) {
+        OffsetDateTime expiresAt,
+        OffsetDateTime revokedAt) {
 
     public boolean hasScope(String scope) {
         return scopes != null && Arrays.stream(scopes).anyMatch(scope::equals);
@@ -17,6 +18,7 @@ public record TokenPrincipal(
 
     public boolean isUsableAt(OffsetDateTime now) {
         return "active".equals(status)
+                && revokedAt == null
                 && (expiresAt == null || expiresAt.isAfter(now))
                 && (hasScope("read") || hasScope("admin"));
     }

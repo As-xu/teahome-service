@@ -37,9 +37,8 @@ class TtlPolicyTest {
     @Test
     void renewedExpiryNeverShrinks() {
         Instant oldExpiry = now.plus(Duration.ofDays(9));
-        assertThat(TtlPolicy.renewedExpiry(oldExpiry, now.plus(Duration.ofDays(7))))
-                .isEqualTo(oldExpiry);
-        assertThat(TtlPolicy.renewedExpiry(oldExpiry, now.plus(Duration.ofDays(10))))
-                .isEqualTo(now.plus(Duration.ofDays(10)));
+        assertThat(TtlPolicy.renewedExpiry(oldExpiry, now, 8)).isEqualTo(oldExpiry);
+        assertThat(TtlPolicy.renewedExpiry(oldExpiry, now, 12))
+                .isEqualTo(now.plus(Duration.ofDays(12)));
     }
 }

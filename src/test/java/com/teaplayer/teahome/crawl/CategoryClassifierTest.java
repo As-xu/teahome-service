@@ -29,14 +29,14 @@ class CategoryClassifierTest {
     @Test
     void excludesDocumentaryFromMovie() {
         assertThat(classifier.classify("纪录片").codes()).containsExactly("documentary");
-        assertThat(classifier.classify("电影解说").primary()).isNull();
+        assertThat(classifier.classify("电影解说").primary()).isEqualTo("other");
         assertThat(classifier.classify("电影解说").source()).isEqualTo("unmapped");
     }
 
     @Test
     void handlesUnknownAndBlank() {
-        assertThat(classifier.classify("").primary()).isNull();
-        assertThat(classifier.classify("未分类").primary()).isNull();
+        assertThat(classifier.classify("").primary()).isEqualTo("other");
+        assertThat(classifier.classify("未分类").primary()).isEqualTo("other");
         assertThat(classifier.classify("连续剧").primary()).isEqualTo("tv");
     }
 }

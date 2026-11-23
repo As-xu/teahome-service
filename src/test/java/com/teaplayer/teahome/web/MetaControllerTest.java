@@ -90,6 +90,6 @@ class MetaControllerTest {
     }
 
     private static TokenPrincipal principal(String... scopes) {
-        return new TokenPrincipal(1L, "test", scopes, "active", null);
+        return new TokenPrincipal(1L, "test", scopes, "active", null, null);
     }
 }

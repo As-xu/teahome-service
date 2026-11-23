@@ -34,7 +34,7 @@ public class CrawlOnceRunner implements ApplicationRunner {
             CrawlService.RunOutcome outcome = switch (kind) {
                 case "hourly" -> service.run("hourly", "cli");
                 case "daily" -> service.run("daily", "cli");
-                case "retention" -> service.retention();
+                case "retention" -> service.retention("cli");
                 default -> throw new IllegalArgumentException("未知的 teahome.crawl.once=" + kind);
             };
             log.info("一次性任务完成 kind={} status={} items={} upserted={}",

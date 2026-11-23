@@ -8,6 +8,10 @@ spring:
     hikari:
       maximum-pool-size: ${TEAHOME_DB_POOL_MAX:10}
       minimum-idle: 2
+      connection-timeout: 5000
+      validation-timeout: 3000
+      leak-detection-threshold: 60000
+      connection-init-sql: "SET statement_timeout = '120s'"
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:false}
     locations: classpath:db/migration
