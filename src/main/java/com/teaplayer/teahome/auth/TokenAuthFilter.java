@@ -21,8 +21,6 @@ public class TokenAuthFilter extends OncePerRequestFilter {
 
     public static final String ATTRIBUTE = "teahome.token";
     private static final String TOKEN_HEADER = "X-TeaHome-Token";
-    private static final String UNAUTHORIZED_BODY =
-            "{\"error\":\"unauthorized\",\"message\":\"missing or invalid token\"}";
 
     private final ApiTokenService tokenService;
 
@@ -32,7 +30,20 @@ public class TokenAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        // 用解码后的路径判断，避免 /%76%31/... 这类编码绕过。
         String path = request.getRequestURI();
+        if (path == null || path.isEmpty()) {
+            path = request.getServletPath();
+        }
+        try {
+            path = java.net.URLDecoder.decode(path, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            // 保留原始路径，交给后续鉴权/路由处理
+        }
+        String context = request.getContextPath();
+        if (context != null && !context.isEmpty() && path.startsWith(context)) {
+            path = path.substring(context.length());
+        }
         return !(path.equals("/v1") || path.startsWith("/v1/"));
     }
 
@@ -42,12 +53,16 @@ public class TokenAuthFilter extends OncePerRequestFilter {
         String rawToken = extractToken(request);
         Optional<TokenPrincipal> principal = tokenService.authenticate(rawToken, request.getRemoteAddr());
         if (principal.isEmpty()) {
+            Object requestId = request.getAttribute("teahome.requestId");
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
             response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
             response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "TeaHome-Token realm=\"teahome\"");
-            response.getWriter().write(UNAUTHORIZED_BODY);
+            response.getWriter().write("""
+                    {"error":{"code":"unauthorized","message":"missing or invalid token","requestId":"%s","serverTime":"%s"},"retryAfterMs":0}
+                    """.formatted(requestId == null ? "-" : requestId,
+                    java.time.OffsetDateTime.now(java.time.ZoneId.of("Asia/Shanghai"))));
             return;
         }
         request.setAttribute(ATTRIBUTE, principal.get());

@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -20,11 +22,13 @@ import com.teaplayer.teahome.api.ApiException;
 public class ImageService {
 
     private static final Pattern KEY = Pattern.compile("[0-9a-f]{64}");
+    private static final Logger log = LoggerFactory.getLogger(ImageService.class);
 
     private final JdbcClient jdbc;
     private final ImageFetcher fetcher;
     private final Path root;
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
+    private final java.util.concurrent.Semaphore fetchPermits = new java.util.concurrent.Semaphore(4);
 
     public ImageService(JdbcClient jdbc, ImageFetcher fetcher,
                         @Value("${teahome.image.dir:/data/images}") String root) {
@@ -41,6 +45,9 @@ public class ImageService {
             throw ApiException.notFound("封面不存在");
         }
         String imageKey = key.toLowerCase(Locale.ROOT);
+        if (failedRecently(imageKey)) {
+            throw ApiException.upstream("封面暂不可用");
+        }
         Cached cached = cached(imageKey);
         if (cached != null) {
             byte[] bytes = read(Path.of(cached.filePath()));
@@ -49,14 +56,18 @@ public class ImageService {
             }
         }
         synchronized (locks.computeIfAbsent(imageKey, k -> new Object())) {
-            Cached again = cached(imageKey);
-            if (again != null) {
-                byte[] bytes = read(Path.of(again.filePath()));
-                if (bytes != null) {
-                    return new Loaded(bytes, again.contentType(), again.etag());
+            try {
+                Cached again = cached(imageKey);
+                if (again != null) {
+                    byte[] bytes = read(Path.of(again.filePath()));
+                    if (bytes != null) {
+                        return new Loaded(bytes, again.contentType(), again.etag());
+                    }
                 }
+                return fetchAndStore(imageKey, again != null ? again : cached);
+            } finally {
+                locks.remove(imageKey);
             }
-            return fetchAndStore(imageKey, cached);
         }
     }
 
@@ -65,15 +76,42 @@ public class ImageService {
         if (sourceUrl == null) {
             throw ApiException.notFound("封面不存在");
         }
-        ImageFetcher.Fetched fetched = fetcher.fetch(sourceUrl);
+        ImageFetcher.Fetched fetched;
+        boolean acquired = false;
+        try {
+            acquired = fetchPermits.tryAcquire(2, java.util.concurrent.TimeUnit.SECONDS);
+            if (!acquired) {
+                throw ApiException.upstream("封面服务繁忙");
+            }
+            fetched = fetcher.fetch(sourceUrl);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw ApiException.upstream("封面服务中断");
+        } catch (RuntimeException e) {
+            recordFailure(key, sourceUrl, e);
+            throw e;
+        } finally {
+            if (acquired) {
+                fetchPermits.release();
+            }
+        }
         Path target = root.resolve(key);
+        Path tmp = null;
         try {
             Files.createDirectories(root);
-            Path tmp = Files.createTempFile(root, key, ".part");
+            tmp = Files.createTempFile(root, key, ".part");
             Files.write(tmp, fetched.bytes());
             Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw ApiException.upstream("封面写入失败");
+        } finally {
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException ignored) {
+                    // 临时文件清理失败不覆盖主错误
+                }
+            }
         }
         String host = host(sourceUrl);
         jdbc.sql("""
@@ -105,6 +143,47 @@ public class ImageService {
                 .param("etag", fetched.sha256())
                 .update();
         return new Loaded(fetched.bytes(), fetched.contentType(), fetched.sha256());
+    }
+
+    private boolean failedRecently(String key) {
+        return jdbc.sql("""
+                        SELECT 1
+                          FROM teaplayer_image_cache
+                         WHERE image_key = :key
+                           AND status = 'failed'
+                           AND last_error_at > now() - interval '60 seconds'
+                        """)
+                .param("key", key)
+                .query(Integer.class)
+                .optional()
+                .isPresent();
+    }
+
+    private void recordFailure(String key, String sourceUrl, RuntimeException error) {
+        String code = error instanceof ApiException api ? api.code() : "upstream";
+        try {
+            jdbc.sql("""
+                            INSERT INTO teaplayer_image_cache
+                                (image_key, source_url, source_host, bytes, file_path, status,
+                                 fail_count, last_error_code, last_error_at, updated_at)
+                            VALUES (:key, :url, :host, 0, '', 'failed', 1, :code, now(), now())
+                            ON CONFLICT (image_key) DO UPDATE
+                               SET source_url = EXCLUDED.source_url,
+                                   source_host = EXCLUDED.source_host,
+                                   status = 'failed',
+                                   fail_count = teaplayer_image_cache.fail_count + 1,
+                                   last_error_code = EXCLUDED.last_error_code,
+                                   last_error_at = now(),
+                                   updated_at = now()
+                            """)
+                    .param("key", key)
+                    .param("url", sourceUrl)
+                    .param("host", host(sourceUrl))
+                    .param("code", code)
+                    .update();
+        } catch (RuntimeException e) {
+            log.warn("记录封面失败状态失败 key={} code={}", key, code);
+        }
     }
 
     private String lookupUrl(String key) {

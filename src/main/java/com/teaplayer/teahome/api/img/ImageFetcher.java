@@ -40,6 +40,10 @@ public class ImageFetcher {
         if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
             throw new IllegalStateException("图片地址协议不支持");
         }
+        int port = uri.getPort();
+        if (port != -1 && port != 80 && port != 443) {
+            throw new IllegalStateException("图片地址端口不允许");
+        }
         requirePublicHost(uri.getHost());
 
         HttpRequest request = HttpRequest.newBuilder(uri)
@@ -122,10 +126,24 @@ public class ImageFetcher {
                 if (text.startsWith("fc") || text.startsWith("fd") || text.startsWith("fe80")) {
                     throw new IllegalStateException("图片地址不允许内网地址");
                 }
+                byte[] raw = address.getAddress();
+                if (raw.length == 4 && forbiddenV4(raw)) {
+                    throw new IllegalStateException("图片地址不允许内网地址");
+                }
             }
         } catch (IOException e) {
             throw new IllegalStateException("图片主机无法解析");
         }
+    }
+
+    private static boolean forbiddenV4(byte[] ip) {
+        int a = ip[0] & 0xFF;
+        int b = ip[1] & 0xFF;
+        return a == 0
+                || (a == 100 && b >= 64 && b <= 127)
+                || (a == 198 && (b == 18 || b == 19))
+                || (a == 192 && b == 0 && (ip[2] & 0xFF) == 0)
+                || a >= 240;
     }
 
     private static String sha256(byte[] bytes) {

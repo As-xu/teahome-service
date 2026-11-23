@@ -34,8 +34,19 @@ public class TtlCache<K, V> {
         if (map.size() >= maxEntries) {
             long now = System.currentTimeMillis();
             map.entrySet().removeIf(e -> now - e.getValue().at() > ttlMs);
-            if (map.size() >= maxEntries) {
-                map.clear();
+            while (map.size() >= maxEntries) {
+                K oldest = null;
+                long oldestAt = Long.MAX_VALUE;
+                for (Map.Entry<K, Entry<V>> e : map.entrySet()) {
+                    if (e.getValue().at() < oldestAt) {
+                        oldestAt = e.getValue().at();
+                        oldest = e.getKey();
+                    }
+                }
+                if (oldest == null) {
+                    break;
+                }
+                map.remove(oldest);
             }
         }
         map.put(key, new Entry<>(value, System.currentTimeMillis()));

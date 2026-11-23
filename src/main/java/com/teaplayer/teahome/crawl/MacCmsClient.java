@@ -83,8 +83,12 @@ public class MacCmsClient {
     }
 
     public List<RawItem> search(SourceRow source, SourceSpec spec, String keyword) {
-        String url = source.baseUrl() + "?ac=list&wd="
-                + java.net.URLEncoder.encode(keyword, java.nio.charset.StandardCharsets.UTF_8);
+        if (!spec.hasEndpoint("search")) {
+            throw new IllegalStateException("源未配置 search endpoint");
+        }
+        String url = source.baseUrl() + spec.url("search", Map.of(
+                "keyword", java.net.URLEncoder.encode(keyword, java.nio.charset.StandardCharsets.UTF_8),
+                "page", "1"));
         JsonNode root = getJson(url, source);
         return parseItems(root, spec, Instant.now());
     }

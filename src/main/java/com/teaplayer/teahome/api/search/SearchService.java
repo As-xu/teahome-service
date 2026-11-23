@@ -142,7 +142,9 @@ public class SearchService {
         }
         SearchDtos.SearchResponse response = new SearchDtos.SearchResponse(q, cat, items,
                 !failed.isEmpty(), failed, OffsetDateTime.now(ZONE).toString());
-        cache.put(cacheKey, response);
+        if (failed.isEmpty()) {
+            cache.put(cacheKey, response);
+        }
         return response;
     }
 

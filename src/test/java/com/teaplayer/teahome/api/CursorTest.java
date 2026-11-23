@@ -9,9 +9,15 @@ class CursorTest {
 
     @Test
     void roundTrip() {
-        Cursor cursor = new Cursor(42L, 7L);
+        Cursor cursor = new Cursor("tv", 42L, 7L);
         Cursor decoded = Cursor.decode(cursor.encode());
         assertThat(decoded).isEqualTo(cursor);
+    }
+
+    @Test
+    void roundTripAllCategories() {
+        Cursor cursor = new Cursor("", 42L, 7L);
+        assertThat(Cursor.decode(cursor.encode())).isEqualTo(cursor);
     }
 
     @Test

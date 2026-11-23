@@ -16,7 +16,7 @@ public class WebConfig {
     FilterRegistrationBean<TokenAuthFilter> tokenAuthFilter(ApiTokenService tokenService) {
         FilterRegistrationBean<TokenAuthFilter> registration =
                 new FilterRegistrationBean<>(new TokenAuthFilter(tokenService));
-        registration.addUrlPatterns("/v1", "/v1/*");
+        registration.addUrlPatterns("/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
         return registration;
     }
@@ -25,7 +25,7 @@ public class WebConfig {
     FilterRegistrationBean<RateLimitFilter> rateLimitFilter() {
         FilterRegistrationBean<RateLimitFilter> registration =
                 new FilterRegistrationBean<>(new RateLimitFilter());
-        registration.addUrlPatterns("/v1", "/v1/*");
+        registration.addUrlPatterns("/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
         return registration;
     }

@@ -26,17 +26,34 @@ public class ImageController {
                                         @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
         ImageService.Loaded loaded = imageService.load(key);
         String etag = "\"" + loaded.etag() + "\"";
-        if (ifNoneMatch != null && ifNoneMatch.contains(loaded.etag())) {
+        if (matches(ifNoneMatch, etag)) {
             return ResponseEntity.status(304)
                     .eTag(etag)
-                    .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic().immutable())
+                    .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePrivate().immutable())
+                    .header("X-Content-Type-Options", "nosniff")
                     .build();
         }
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(loaded.contentType()))
                 .eTag(etag)
-                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic().immutable())
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePrivate().immutable())
                 .header("X-Content-Type-Options", "nosniff")
                 .body(loaded.bytes());
+    }
+
+    private static boolean matches(String ifNoneMatch, String etag) {
+        if (ifNoneMatch == null || ifNoneMatch.isBlank()) {
+            return false;
+        }
+        for (String candidate : ifNoneMatch.split(",")) {
+            String value = candidate.trim();
+            if (value.startsWith("W/")) {
+                value = value.substring(2).trim();
+            }
+            if ("*".equals(value) || etag.equals(value)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

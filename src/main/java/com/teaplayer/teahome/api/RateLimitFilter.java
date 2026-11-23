@@ -26,22 +26,41 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String path = request.getRequestURI();
+        if (path == null || path.isEmpty()) {
+            path = request.getServletPath();
+        }
+        try {
+            path = java.net.URLDecoder.decode(path, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            // 保留原值
+        }
+        if (!(path.equals("/v1") || path.startsWith("/v1/"))) {
+            chain.doFilter(request, response);
+            return;
+        }
+        String bucket;
         int limit;
         long periodMs;
         if (path.startsWith("/v1/search")) {
+            bucket = "search";
             limit = 2;
             periodMs = 1_000L;
         } else if (path.startsWith("/v1/img/")) {
+            bucket = "img";
             limit = 120;
             periodMs = 60_000L;
         } else {
+            bucket = "read";
             limit = 30;
             periodMs = 1_000L;
         }
-        String who = key(request);
+        if (windows.size() > 10_000) {
+            windows.clear();
+        }
+        String who = key(request) + ":" + bucket;
         Window window = windows.computeIfAbsent(who, k -> new Window());
         if (!window.allow(limit, periodMs)) {
-            writeTooMany(request, response);
+            writeTooMany(request, response, periodMs);
             return;
         }
         chain.doFilter(request, response);
@@ -55,16 +74,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
         return "ip:" + request.getRemoteAddr();
     }
 
-    private static void writeTooMany(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    private static void writeTooMany(HttpServletRequest request, HttpServletResponse response, long periodMs)
+            throws IOException {
         Object requestId = request.getAttribute(RequestIdFilter.ATTRIBUTE);
+        long retryAfterMs = periodMs;
         response.setStatus(429);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json");
-        response.setHeader("Retry-After", "1");
+        response.setHeader("Retry-After", Long.toString(Math.max(1L, (periodMs + 999L) / 1000L)));
         response.setHeader("Cache-Control", "no-store");
         response.getWriter().write("""
-                {"error":{"code":"rate_limited","message":"请求过于频繁","requestId":"%s"},"retryAfterMs":1000}
-                """.formatted(requestId == null ? "-" : requestId));
+                {"error":{"code":"rate_limited","message":"请求过于频繁","requestId":"%s","serverTime":"%s"},"retryAfterMs":%d}
+                """.formatted(requestId == null ? "-" : requestId,
+                java.time.OffsetDateTime.now(java.time.ZoneId.of("Asia/Shanghai")), retryAfterMs));
     }
 
     private static final class Window {

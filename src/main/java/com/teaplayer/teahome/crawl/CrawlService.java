@@ -63,14 +63,14 @@ public class CrawlService {
         if (!props.isEnabled() && !"manual".equals(trigger)) {
             return RunOutcome.skipped("disabled");
         }
-        return withLock("crawl:" + kind, () -> doRun(kind, trigger));
+        return withLock("crawl", () -> doRun(kind, trigger));
     }
 
     public RunOutcome retention(String trigger) {
         if (!props.isEnabled() && !"manual".equals(trigger)) {
             return RunOutcome.skipped("disabled");
         }
-        return withLock("crawl:retention", () -> doRetention(trigger));
+        return withLock("crawl", () -> doRetention(trigger));
     }
 
     private RunOutcome doRun(String kind, String trigger) {

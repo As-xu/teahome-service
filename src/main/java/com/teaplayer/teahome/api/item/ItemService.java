@@ -175,7 +175,7 @@ public class ItemService {
                         SELECT i.source_id, i.item_id, (i.id = g.primary_item_id) AS is_primary
                           FROM teaplayer_source_item i
                           JOIN teaplayer_title_group g ON g.id = i.group_id
-                         WHERE i.group_id = :group AND i.status = 'active'
+                         WHERE i.group_id = :group AND i.status = 'active' AND i.expires_at > now()
                          ORDER BY is_primary DESC, i.source_id
                         """)
                 .param("group", groupId)

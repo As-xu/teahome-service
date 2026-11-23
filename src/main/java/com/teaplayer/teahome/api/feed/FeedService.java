@@ -45,7 +45,11 @@ public class FeedService {
             throw ApiException.badRequest("bad_size", "size 必须在 1 到 60 之间");
         }
         String cat = normalizeCategory(category);
+        String cursorCategory = cat == null ? "" : cat;
         Cursor cursor = Cursor.decode(cursorValue);
+        if (cursor != null && !cursorCategory.equals(cursor.category())) {
+            throw ApiException.badRequest("bad_cursor", "cursor 与筛选条件不匹配");
+        }
 
         StringBuilder sql = new StringBuilder("""
                 SELECT g.id, g.merge_key, g.title, g.year, g.category_codes, g.primary_category,
@@ -103,7 +107,7 @@ public class FeedService {
         String next = null;
         if (hasMore && !rows.isEmpty()) {
             Row last = rows.get(rows.size() - 1);
-            next = new Cursor(last.feedSeq(), last.id()).encode();
+            next = new Cursor(cursorCategory, last.feedSeq(), last.id()).encode();
         }
 
         return new FeedDtos.FeedResponse(items, next, hasMore, now(),
@@ -152,6 +156,7 @@ public class FeedService {
                   JOIN teaplayer_title_group g ON g.id = i.group_id
                  WHERE i.group_id IN (%s)
                    AND i.status = 'active'
+                   AND i.expires_at > now()
                  ORDER BY i.group_id, is_primary DESC, i.source_id
                 """.formatted(in);
         jdbc.sql(sql).params(params).query((rs, n) -> {
@@ -173,7 +178,11 @@ public class FeedService {
         jdbc.sql("""
                 SELECT g.id, count(pl.id) AS n
                   FROM teaplayer_title_group g
-                  LEFT JOIN teaplayer_play_line pl ON pl.item_id = g.primary_item_id
+                  LEFT JOIN teaplayer_source_item ps
+                         ON ps.id = g.primary_item_id
+                        AND ps.status = 'active'
+                        AND ps.expires_at > now()
+                  LEFT JOIN teaplayer_play_line pl ON pl.item_id = ps.id
                  WHERE g.id IN (%s)
                  GROUP BY g.id
                 """.formatted(in)).params(params).query((rs, n) -> {

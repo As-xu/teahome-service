@@ -8,10 +8,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -33,6 +37,34 @@ public class ApiExceptionHandler {
     })
     public ResponseEntity<Map<String, Object>> badRequest(Exception e, HttpServletRequest request) {
         return build(400, "bad_request", "请求参数不正确", null, request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> notFound(NoResourceFoundException e, HttpServletRequest request) {
+        return build(404, "not_found", "资源不存在", null, request);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> methodNotAllowed(HttpRequestMethodNotSupportedException e,
+                                                               HttpServletRequest request) {
+        ResponseEntity<Map<String, Object>> response = build(405, "method_not_allowed", "请求方法不支持", null, request);
+        return ResponseEntity.status(405)
+                .headers(response.getHeaders())
+                .allow(e.getSupportedHttpMethods() == null ? new org.springframework.http.HttpMethod[0]
+                        : e.getSupportedHttpMethods().toArray(new org.springframework.http.HttpMethod[0]))
+                .body(response.getBody());
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> unsupportedMedia(HttpMediaTypeNotSupportedException e,
+                                                               HttpServletRequest request) {
+        return build(415, "unsupported_media_type", "不支持的请求类型", null, request);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<Map<String, Object>> notAcceptable(HttpMediaTypeNotAcceptableException e,
+                                                            HttpServletRequest request) {
+        return build(406, "not_acceptable", "无法满足 Accept", null, request);
     }
 
     @ExceptionHandler(Exception.class)

@@ -104,8 +104,13 @@ public class ItemWriter {
         int lines = 0;
 
         if (found.isEmpty()) {
-            itemId = insert(source, raw, titleNorm, mergeKey, year, category, contentHash, playHash,
-                    TtlPolicy.expiry(raw.vodTime(), now, ttlDays), ttlDays, groupId, now);
+            Optional<Long> inserted = insert(source, raw, titleNorm, mergeKey, year, category, contentHash,
+                    playHash, TtlPolicy.expiry(raw.vodTime(), now, ttlDays), ttlDays, groupId, now);
+            if (inserted.isEmpty()) {
+                // 并发抓取在 loadExisting 之后插入了同一 (source_id,item_id)；重新进入更新路径。
+                return write(source, raw, detailed);
+            }
+            itemId = inserted.get();
             changed = true;
             renewed = true;
             lines = replaceLines(itemId, source, raw);
@@ -163,7 +168,7 @@ public class ItemWriter {
                 .optional();
     }
 
-    private long insert(SourceRow source, RawItem raw, String titleNorm, String mergeKey, Short year,
+    private Optional<Long> insert(SourceRow source, RawItem raw, String titleNorm, String mergeKey, Short year,
                         CategoryClassifier.Result category, String contentHash, String playHash,
                         Instant expires, int ttlDays, Long groupId, Instant now) {
         return jdbc.sql("""
@@ -179,6 +184,7 @@ public class ItemWriter {
                              :classifierVersion, :hash, :playHash, :vodTime, :expiresAt,
                              :ttlDays, 'active', :groupId, :cover, :coverKey, :remark, :area, :lang,
                              CAST(:extra AS jsonb), :now, :now)
+                        ON CONFLICT (source_id, item_id) DO NOTHING
                         RETURNING id
                         """)
                 .param("sourceId", source.id())
@@ -206,7 +212,7 @@ public class ItemWriter {
                 .param("extra", extra(raw))
                 .param("now", ts(now))
                 .query(Long.class)
-                .single();
+                .optional();
     }
 
     private void update(long itemId, SourceRow source, RawItem raw, String titleNorm, String mergeKey,

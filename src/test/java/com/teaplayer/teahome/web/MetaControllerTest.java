@@ -49,7 +49,7 @@ class MetaControllerTest {
         mockMvc.perform(get("/v1/meta"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.error").value("unauthorized"));
+                .andExpect(jsonPath("$.error.code").value("unauthorized"));
     }
 
     @Test
