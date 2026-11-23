@@ -77,6 +77,29 @@ sudo docker exec -i teahome-db psql -U postgres -d teahome -c \
 
 调度容器上线后，无需手工触发；此命令仅用于补跑与验收。
 
+## A 阶段整改（P1.1，2026-11-24，提交 `24e4e27` / `9653d56`）
+
+针对专家复核的 P0/P1 问题已落地：
+
+| 问题 | 处理 |
+| --- | --- |
+| 详情失败时用列表项覆盖，导致封面/线路被清空 | `fetchDetails` 返回 found/missing；只写 found，missing 计入 failures，源标 partial |
+| 内容未变仍全量重写线路 | `content_hash` + `play_hash`；未变只续期，`updated_at` 只在内容变化时更新 |
+| 换组后旧 group 不重建 | 写前记录旧 group，按 id 升序锁并重建旧+新 |
+| group 硬删导致 ID 复用 | 空组保留、`item_count=0`；新增不可变 `feed_seq` |
+| 每集一条 INSERT | 单线路 `jsonb_to_recordset` 批量插入 |
+| 无并发互斥 | `pg_try_advisory_lock` + 3 小时 stale 恢复 |
+| 分类未命中不入组 | 落 `other` + `category_source='unmapped'` |
+| vod_time 前移才续期，老片内容变化会 5 分钟过期 | `renewedExpiry = max(old, now+ttl)` |
+| allow_hosts 未生效、重定向无校验、响应无上限 | `allow_hosts` + `Redirect.NEVER` + 8MiB + 3 次退避重试 |
+| token 吊销不生效、前缀明文 | 读 `revoked_at`；`token_prefix = hash[0:8]` |
+| Hikari/语句超时缺失 | connection/validation/leak + `statement_timeout=120s` |
+
+验收：daily run=8 4,957 条、0 失败、742s；`play_hash` 全量非空、`feed_seq` 无空、分组计数 0 不一致、每 item 恰好 1 条 primary 线路。
+
+剩余偏差：`vod_time` 解析失败仍回退 now；无 Testcontainers 集成测试；410/tombstone 未做；源级仍串行。
+
 ## 下一步
 
-P2：`/v1/feed` 游标分页 + 分类筛选 + 封面代理，客户端接 Source；同时补 xifan、重试、source_category 映射。
+P2 已开始，见 `docs/P2-STATUS.md`。
+

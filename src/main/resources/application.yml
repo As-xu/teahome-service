@@ -10,7 +10,7 @@ spring:
       minimum-idle: 2
       connection-timeout: 5000
       validation-timeout: 3000
-      leak-detection-threshold: 60000
+      leak-detection-threshold: ${TEAHOME_HIKARI_LEAK_MS:60000}
       connection-init-sql: "SET statement_timeout = '120s'"
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:false}

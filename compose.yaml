@@ -98,6 +98,7 @@ services:
       TEAHOME_DB_PASSWORD_FILE: /run/secrets/db_app
       TEAHOME_CRAWL_ENABLED: "true"
       TEAHOME_SCHEDULING_ENABLED: "true"
+      TEAHOME_HIKARI_LEAK_MS: "0"
       TZ: UTC
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -XX:-UsePerfData"
     secrets: [db_app]

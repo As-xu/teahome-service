@@ -156,10 +156,16 @@ public class SearchService {
         if (message.contains("timeout") || message.contains("超时")) {
             return "timeout";
         }
-        if (message.contains("allow") || message.contains("host")) {
+        if (message.contains("allow_hosts")) {
             return "blocked_host";
         }
-        return "error";
+        if (message.contains("HTTP 403")) {
+            return "http_403";
+        }
+        if (message.contains("中断")) {
+            return "interrupted";
+        }
+        return "upstream";
     }
 
     private static Integer parseYear(String value) {
