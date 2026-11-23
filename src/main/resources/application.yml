@@ -23,6 +23,7 @@ server:
     include-stacktrace: never
 
 teahome:
+  scheduling-enabled: ${TEAHOME_SCHEDULING_ENABLED:true}
   token:
     bootstrap: ${TEAHOME_BOOTSTRAP_TOKEN:}
   crawl:
