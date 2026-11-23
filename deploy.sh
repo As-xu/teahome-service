@@ -3,10 +3,17 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ENVF=${TEAHOME_ENV_FILE:-/opt/teahome/env/.env}
 
-sudo docker compose --env-file "$ENVF" config -q
-git -c http.proxy= -c https.proxy= pull --ff-only
+# 以仓库属主身份拉代码：deploy.sh 通常用 sudo 执行，而 deploy key 在属主 ~/.ssh 下。
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+  GIT=(sudo -u "$SUDO_USER" git)
+else
+  GIT=(git)
+fi
 
-SHA=$(git rev-parse --short HEAD)
+sudo docker compose --env-file "$ENVF" config -q
+"${GIT[@]}" -c http.proxy= -c https.proxy= pull --ff-only
+
+SHA=$("${GIT[@]}" rev-parse --short HEAD)
 grep -q '^API_TAG=' "$ENVF" || echo 'API_TAG=' >> "$ENVF"
 sed -i "s/^API_TAG=.*/API_TAG=$SHA/" "$ENVF"
 
