@@ -130,7 +130,8 @@ public class CrawlService {
                                    source_ok = :sourceOk, source_failed = :sourceFailed,
                                    pages = :pages, items_fetched = :fetched, items_upserted = :upserted,
                                    details_fetched = :details, failures = :failures,
-                                   duration_ms = :durationMs, error = :error
+                                   duration_ms = :durationMs,
+                                   error_code = :errorCode, error_detail = :error
                              WHERE id = :id
                             """)
                     .param("status", status)
@@ -143,6 +144,7 @@ public class CrawlService {
                     .param("details", details)
                     .param("failures", failures)
                     .param("durationMs", durationMs)
+                    .param("errorCode", error == null ? null : "run_failed")
                     .param("error", error)
                     .param("id", id)
                     .update();
@@ -178,13 +180,15 @@ public class CrawlService {
             jdbc.sql("""
                             UPDATE teaplayer_crawl_run
                                SET status = :status, finished_at = :finishedAt, items_skipped = :deleted,
-                                   duration_ms = :durationMs, error = :error
+                                   duration_ms = :durationMs,
+                                   error_code = :errorCode, error_detail = :error
                              WHERE id = :id
                             """)
                     .param("status", status)
                     .param("finishedAt", ts(Instant.now()))
                     .param("deleted", deleted)
                     .param("durationMs", durationMs)
+                    .param("errorCode", error == null ? null : "retention_failed")
                     .param("error", error)
                     .param("id", id)
                     .update();
@@ -340,7 +344,8 @@ public class CrawlService {
         int runs = jdbc.sql("""
                         UPDATE teaplayer_crawl_run
                            SET status = 'failed', finished_at = now(),
-                               error = COALESCE(error, 'stale run recovered')
+                               error_code = COALESCE(error_code, 'stale'),
+                               error_detail = COALESCE(error_detail, 'stale run recovered')
                          WHERE status = 'running' AND started_at < :cutoff
                         """)
                 .param("cutoff", ts(cutoff))
