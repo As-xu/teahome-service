@@ -7,7 +7,8 @@ INSERT INTO teaplayer_source
 VALUES
     ('hongniu', '红牛资源', 'maccms',
      'https://www.hongniuzy2.com/api.php/provide/vod/',
-     $spec${
+     $spec$
+{
        "id":"hongniu","name":"红牛资源","version":"1.0.0",
        "baseUrl":"https://www.hongniuzy2.com/api.php/provide/vod/",
        "endpoints":{"list":"?ac=list&pg={page}&t={typeId}","search":"?ac=list&wd={keyword}&pg={page}","detail":"?ac=detail&ids={ids}"},
@@ -19,7 +20,8 @@ VALUES
 
     ('ffzy', '非凡资源', 'maccms',
      'https://api.ffzyapi.com/api.php/provide/vod/',
-     $spec${
+     $spec$
+{
        "id":"ffzy","name":"非凡资源","version":"1.0.0",
        "baseUrl":"https://api.ffzyapi.com/api.php/provide/vod/",
        "endpoints":{"list":"?ac=list&pg={page}&t={typeId}","search":"?ac=list&wd={keyword}&pg={page}","detail":"?ac=detail&ids={ids}"},
@@ -31,7 +33,8 @@ VALUES
 
     ('xgzy', '西瓜资源', 'maccms',
      'https://caiji.xgzyapi.com/api.php/provide/vod/',
-     $spec${
+     $spec$
+{
        "id":"xgzy","name":"西瓜资源","version":"1.0.0",
        "baseUrl":"https://caiji.xgzyapi.com/api.php/provide/vod/",
        "endpoints":{"list":"?ac=list&pg={page}&t={typeId}","search":"?ac=list&wd={keyword}&pg={page}","detail":"?ac=detail&ids={ids}"},
@@ -43,7 +46,8 @@ VALUES
 
     ('zuid', '最大资源', 'maccms',
      'https://api.zuidapi.com/api.php/provide/vod/',
-     $spec${
+     $spec$
+{
        "id":"zuid","name":"最大资源","version":"1.0.0",
        "baseUrl":"https://api.zuidapi.com/api.php/provide/vod/",
        "endpoints":{"list":"?ac=list&pg={page}&t={typeId}","search":"?ac=list&wd={keyword}&pg={page}","detail":"?ac=detail&ids={ids}"},
@@ -55,7 +59,8 @@ VALUES
 
     ('jizy', '极速资源', 'maccms',
      'https://jyzyapi.com/api.php/provide/vod/',
-     $spec${
+     $spec$
+{
        "id":"jizy","name":"极速资源","version":"1.0.0",
        "baseUrl":"https://jyzyapi.com/api.php/provide/vod/",
        "endpoints":{"list":"?ac=list&pg={page}&t={typeId}","search":"?ac=list&wd={keyword}&pg={page}","detail":"?ac=detail&ids={ids}"},
@@ -67,7 +72,8 @@ VALUES
 
     ('uku', 'U酷资源', 'maccms',
      'https://api.ukuapi88.com/api.php/provide/vod/',
-     $spec${
+     $spec$
+{
        "id":"uku","name":"U酷资源","version":"1.0.0",
        "baseUrl":"https://api.ukuapi88.com/api.php/provide/vod/",
        "endpoints":{"list":"?ac=list&pg={page}&t={typeId}","search":"?ac=list&wd={keyword}&pg={page}","detail":"?ac=detail&ids={ids}"},
@@ -81,7 +87,8 @@ VALUES
     -- 适配器放到 P1.1，避免用一个半成品影响 MacCMS 六源的验收。
     ('xifan', '稀饭动漫', 'postgrest',
      'https://api.xifanacg.com/rest/v1/',
-     $spec${
+     $spec$
+{
        "id":"xifan","name":"稀饭动漫","version":"1.0.0",
        "baseUrl":"https://api.xifanacg.com/rest/v1/",
        "endpoints":{
