@@ -77,4 +77,21 @@ curl -X PUT -H "X-TeaHome-Token: $TOKEN" -H 'Content-Type: application/json' \
 - 路径绕过回归：`/v1;x/feed`、`/%76%31/feed` 均 401；`/health` 200。
 - schema 9；api/crawler/db 三容器 healthy。
 
-仍未做（P3.2 候选）：图片 DNS pin、配置 PUT 前跨键校验/提交后 notify、22 键接线、图片 GC、live detail 并发/负缓存、health 查 DB、Testcontainers。
+仍未做（P3.2 候选）：图片 DNS pin、图片 GC、live detail 并发/负缓存、Testcontainers。
+
+## P3.2 收尾（配置校验、运行时接线、健康检查）
+
+2026-11-25 部署 `4347171`，线上验证如下。
+
+- **写入前跨键校验**：`ConfigService.validateChange(key,value)` 先做类型/范围规范化，再把候选值放进当前快照副本跑 `checkCrossKeys`；不合法抛 `IllegalArgumentException`，`ConfigController` 返回 400 `bad_value`，DB 不落值。
+- **提交后刷新**：`ConfigController` 写 value/revision/audit 后，通过 `TransactionSynchronization.afterCommit` 执行 `config.reload()` + `notifyChange`；响应直接用本次写入的 `EntryView`，不再读旧快照。
+- **运行时接线**：`search.timeout_per_source` / `search.deadline`（SearchService + MacCmsClient 单次超时）、`crawl.hourly.window_hours` / `crawl.daily.window_hours` / `crawl.detail_batch_size` / `retention.ttl_days`（CrawlService）、`image.max_bytes`（ImageFetcher）均从 ConfigService 读取。
+- **健康检查**：`/health` 查询 `teaplayer_service_meta.schema_version`；缺失/不匹配/连不上返回 503 `{status:DOWN,reason:...}`，正常返回 200 `{status:UP,schemaVersion:"9"}`。
+- **验收**：
+  - `PUT /v1/admin/config/feed.page_size_max` = `10` → 400 `bad_value`（`feed.page_size_default` 24 会越界），`teaplayer_config_value` 无该行。
+  - `PUT feed.page_size_default=12` → 200，`GET /v1/feed` 返回 12 条；恢复后返回 24、`source=default`。
+  - `PUT logging.level=DEBUG` → 200，crawler 立即输出「收到配置变更通知：logging.level」，无需等 30 秒轮询。
+  - 测试 token 与测试配置行已删除；`/v1/meta` schema 9，三容器 healthy。
+  - `./mvnw -B -q test` 28 个通过。
+
+仍未做（后续）：配置 NOTIFY 使用独立连接以完全避开事务边界、图片缓存 GC、live detail 负缓存/信号量、Testcontainers 集成测试、其余配置键接线。
