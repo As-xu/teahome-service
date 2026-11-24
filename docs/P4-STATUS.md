@@ -83,3 +83,13 @@ compose 的 `teahome-admin`：`network_mode: host`、绑定 127.0.0.1、`TEAHOME
 - **审计参数类型**：`target_id` 为 NULL 时显式 `CAST(:targetId AS text)`，手动抓取不再 500。
 
 验证：32 个测试通过；部署 `727768a` 后四容器 healthy；`/v1;x/feed`、`/%76%31/feed` 均 401；错误 Host 421；admin `/v1/meta` 302；手动触发产生 `run=60 status=ok items=109`。
+
+### 7.1 复核修复后的线上验证（`e7e01e3`）
+
+- 部署 `e7e01e3`，四容器 healthy；`API_TAG=e7e01e3`；`/health` 200（schemaVersion=10）。
+- 手动抓取：`POST /admin/crawl/trigger` 返回 `?saved=已触发 hourly`；`teaplayer_crawl_run` id=62 `status=ok`、`items_fetched=107`、`items_upserted=107`、`triggered_by=manual`；审计 `crawl.trigger|ok|manual hourly`。限流只统计 manual run，不再被每小时调度误判。
+- 垂直提权：创建 admin 角色测试用户后，尝试创建 owner、重置 owner 密码均返回 **403**（此前 500），随后测试用户已删除。
+- 会话吊销：viewer 会话登录后由 owner 重置其密码，旧 `ths_sid` 再访问 `/admin` 返回 302。
+- CSRF Referer：仅带带路径 Referer、无 Origin 时登录与 sudo 均通过（302）。
+- admin 进程：`/v1/meta` 返回 302（不再暴露 API），`/health` 200。
+- 仍保留的偏差：HTTP 回环 Cookie 无 `__Host-`/Secure；无 TOTP；管理端无集成测试（仅 32 个单测 + 手工验收）。
