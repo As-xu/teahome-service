@@ -15,6 +15,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -65,6 +66,20 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> notAcceptable(HttpMediaTypeNotAcceptableException e,
                                                             HttpServletRequest request) {
         return build(406, "not_acceptable", "无法满足 Accept", null, request);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> status(ResponseStatusException e, HttpServletRequest request) {
+        int status = e.getStatusCode().value();
+        String code = switch (status) {
+            case 401 -> "unauthorized";
+            case 403 -> "forbidden";
+            case 404 -> "not_found";
+            case 405 -> "method_not_allowed";
+            case 429 -> "too_many_requests";
+            default -> "error";
+        };
+        return build(status, code, e.getReason(), null, request);
     }
 
     @ExceptionHandler(Exception.class)
