@@ -98,7 +98,11 @@ public class ConfigController {
                 throw ApiException.badRequest("bad_value", e.getMessage());
             }
         }
-        long nextVersion = current.version() + 1;
+        long nextVersion = jdbc.sql("""
+                SELECT COALESCE(MAX(revision_no), 0) + 1
+                  FROM teaplayer_config_revision
+                 WHERE config_key = :key
+                """).param("key", key).query(Long.class).single();
         if (sealed != null) {
             jdbc.sql("""
                     INSERT INTO teaplayer_config_value
