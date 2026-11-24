@@ -10,8 +10,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
@@ -42,11 +44,12 @@ public class SearchService {
     private final SourceRepository sources;
     private final MacCmsClient client;
     private final CategoryClassifier classifier;
-    private final ExecutorService pool = Executors.newFixedThreadPool(6, r -> {
-        Thread thread = new Thread(r, "search");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ExecutorService pool = new ThreadPoolExecutor(6, 6, 0L, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(12), r -> {
+                Thread thread = new Thread(r, "search");
+                thread.setDaemon(true);
+                return thread;
+            }, new ThreadPoolExecutor.AbortPolicy());
     private final TtlCache<String, SearchDtos.SearchResponse> cache = new TtlCache<>(600_000L, 200);
 
     public SearchService(SourceRepository sources, MacCmsClient client, CategoryClassifier classifier) {
@@ -89,22 +92,41 @@ public class SearchService {
 
         List<SearchDtos.Failed> failed = new ArrayList<>();
         Map<String, MutableItem> merged = new LinkedHashMap<>();
-        List<Future<SourceResult>> futures;
-        try {
-            futures = pool.invokeAll(tasks, 5, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw ApiException.upstream("搜索被中断");
+        List<Future<SourceResult>> futures = new ArrayList<>(tasks.size());
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        for (int i = 0; i < tasks.size(); i++) {
+            try {
+                futures.add(pool.submit(tasks.get(i)));
+            } catch (RejectedExecutionException e) {
+                futures.add(null);
+            }
         }
         for (int i = 0; i < futures.size(); i++) {
             SourceRow source = enabled.get(i);
             Future<SourceResult> future = futures.get(i);
+            if (future == null) {
+                failed.add(new SearchDtos.Failed(source.id(), "busy"));
+                continue;
+            }
             SourceResult result;
             try {
-                result = future.get();
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) {
+                    future.cancel(true);
+                    failed.add(new SearchDtos.Failed(source.id(), "timeout"));
+                    continue;
+                }
+                result = future.get(remaining, TimeUnit.NANOSECONDS);
+            } catch (java.util.concurrent.TimeoutException e) {
+                future.cancel(true);
+                failed.add(new SearchDtos.Failed(source.id(), "timeout"));
+                continue;
             } catch (CancellationException e) {
                 failed.add(new SearchDtos.Failed(source.id(), "timeout"));
                 continue;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw ApiException.upstream("搜索被中断");
             } catch (Exception e) {
                 failed.add(new SearchDtos.Failed(source.id(), "error"));
                 continue;

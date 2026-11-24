@@ -3,6 +3,8 @@ package com.teaplayer.teahome.auth;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -22,7 +24,11 @@ public class TokenAuthFilter extends OncePerRequestFilter {
     public static final String ATTRIBUTE = "teahome.token";
     private static final String TOKEN_HEADER = "X-TeaHome-Token";
 
+    private static final int MAX_FAILURES = 30;
+    private static final long WINDOW_MS = 60_000L;
+
     private final ApiTokenService tokenService;
+    private final Map<String, long[]> failures = new ConcurrentHashMap<>();
 
     public TokenAuthFilter(ApiTokenService tokenService) {
         this.tokenService = tokenService;
@@ -54,6 +60,19 @@ public class TokenAuthFilter extends OncePerRequestFilter {
         Optional<TokenPrincipal> principal = tokenService.authenticate(rawToken, request.getRemoteAddr());
         if (principal.isEmpty()) {
             Object requestId = request.getAttribute("teahome.requestId");
+            String ip = request.getRemoteAddr();
+            if (!allowFailure(ip)) {
+                response.setStatus(429);
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+                response.setHeader("Retry-After", "60");
+                response.getWriter().write("""
+                        {"error":{"code":"rate_limited","message":"too many failed attempts","requestId":"%s","serverTime":"%s"},"retryAfterMs":60000}
+                        """.formatted(requestId == null ? "-" : requestId,
+                        java.time.OffsetDateTime.now(java.time.ZoneId.of("Asia/Shanghai"))));
+                return;
+            }
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -65,8 +84,28 @@ public class TokenAuthFilter extends OncePerRequestFilter {
                     java.time.OffsetDateTime.now(java.time.ZoneId.of("Asia/Shanghai"))));
             return;
         }
+        failures.remove(request.getRemoteAddr());
         request.setAttribute(ATTRIBUTE, principal.get());
         filterChain.doFilter(request, response);
+    }
+
+    private boolean allowFailure(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return true;
+        }
+        if (failures.size() > 10_000) {
+            failures.clear();
+        }
+        long now = System.currentTimeMillis();
+        long[] state = failures.computeIfAbsent(ip, k -> new long[]{0L, now});
+        synchronized (state) {
+            if (now - state[1] > WINDOW_MS) {
+                state[0] = 0L;
+                state[1] = now;
+            }
+            state[0]++;
+            return state[0] <= MAX_FAILURES;
+        }
     }
 
     private String extractToken(HttpServletRequest request) {
