@@ -56,7 +56,7 @@ public class AdminCrawlController {
     public String trigger(HttpServletRequest request) {
         AdminSessionInfo session = AdminModelAdvice.requireWriter(request);
         AdminModelAdvice.requireSudo(session);
-        OffsetDateTime last = jdbc.sql("SELECT max(started_at) FROM teaplayer_crawl_run WHERE run_kind = 'hourly'")
+        OffsetDateTime last = jdbc.sql("SELECT max(started_at) FROM teaplayer_crawl_run WHERE run_kind = 'hourly' AND triggered_by = 'manual'")
                 .query(OffsetDateTime.class).optional().orElse(null);
         if (last != null && last.isAfter(OffsetDateTime.now().minusMinutes(10))) {
             return "redirect:/admin/crawl?error=" + enc("10 分钟内已触发过，请稍后");
