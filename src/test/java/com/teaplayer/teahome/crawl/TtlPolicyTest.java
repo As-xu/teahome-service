@@ -12,17 +12,13 @@ class TtlPolicyTest {
     private final Instant now = Instant.parse("2026-04-01T00:00:00Z");
 
     @Test
-    void expiryUsesEarlierOfVodAndNowWindow() {
+    void expiryNeverShorterThanTtlFromNow() {
         assertThat(TtlPolicy.expiry(now.minus(Duration.ofDays(2)), now, 8))
-                .isEqualTo(now.plus(Duration.ofDays(6)));
-        assertThat(TtlPolicy.expiry(now.plus(Duration.ofDays(30)), now, 8))
                 .isEqualTo(now.plus(Duration.ofDays(8)));
-    }
-
-    @Test
-    void expiryHasFiveMinuteFloor() {
         assertThat(TtlPolicy.expiry(now.minus(Duration.ofDays(30)), now, 8))
-                .isEqualTo(now.plus(Duration.ofMinutes(5)));
+                .isEqualTo(now.plus(Duration.ofDays(8)));
+        assertThat(TtlPolicy.expiry(now.plus(Duration.ofDays(30)), now, 8))
+                .isEqualTo(now.plus(Duration.ofDays(38)));
     }
 
     @Test
