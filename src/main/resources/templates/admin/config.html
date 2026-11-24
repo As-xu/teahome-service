@@ -1,0 +1,43 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: head('配置')}"></head>
+<body>
+<header th:replace="~{admin/layout :: nav}"></header>
+<main class="wrap">
+    <div class="headline">
+        <div><p class="eyebrow">P4 · CONFIG</p><h1>配置中心</h1>
+            <p class="muted">env &gt; db &gt; default；本页只修改 <code>hot</code> 键，改动写 revision 与审计。</p></div>
+    </div>
+    <div class="banner ok" th:if="${saved}" th:text="'已保存：' + ${saved}"></div>
+    <div class="banner error" th:if="${error}" th:text="'未保存：' + ${error}"></div>
+    <div class="banner" th:if="${!adminUser.hasSudo()}">写操作需要 sudo。</div>
+
+    <section class="panel">
+        <table>
+            <thead><tr><th>键</th><th>值</th><th>来源</th><th>类型 / 生效</th><th>说明</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="r : ${rows}">
+                <td><b class="mono" th:text="${r.key}"></b><small class="mono" th:text="${r.group}"></small></td>
+                <td>
+                    <form th:if="${r.editable}" th:action="@{/admin/config/{key}(key=${r.key})}" method="post" class="row-form">
+                        <input type="hidden" name="_csrf" th:value="${csrf}">
+                        <input type="hidden" name="expectedVersion" th:value="${r.version}">
+                        <input name="value" th:value="${r.value}" th:placeholder="${r.secret} ? '留空保持不变' : ''">
+                        <input name="reason" placeholder="变更原因（必填）" required maxlength="200">
+                        <button type="submit">保存</button>
+                    </form>
+                    <span th:unless="${r.editable}" class="mono muted" th:text="${r.value} ?: '(未设置)'"></span>
+                </td>
+                <td><span class="pill" th:text="${r.source}" th:classappend="' ' + ${r.source}"></span></td>
+                <td><span class="mono" th:text="${r.type} + ' · ' + ${r.applyMode}"></span><small th:if="${r.secret}" class="warn">secret</small></td>
+                <td class="muted small" th:text="${r.description}"></td>
+                <td class="mono" th:text="${r.version}"></td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+    <p class="muted small">secret 写入后只在 DB 保存密文；页面永远显示 <code>******</code>。next_run/restart 键只读展示。</p>
+</main>
+<footer th:replace="~{admin/layout :: foot}"></footer>
+</body>
+</html>

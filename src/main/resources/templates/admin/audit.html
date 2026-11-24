@@ -1,0 +1,42 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: head('审计')}"></head>
+<body>
+<header th:replace="~{admin/layout :: nav}"></header>
+<main class="wrap">
+    <div class="headline">
+        <div><p class="eyebrow">P4 · AUDIT</p><h1>审计</h1>
+            <p class="muted">append-only；本页只读，最多显示最近 200 条。</p></div>
+    </div>
+    <form class="filters" method="get" th:action="@{/admin/audit}">
+        <input name="action" placeholder="动作包含" th:value="${action}">
+        <input name="actor" placeholder="操作者包含" th:value="${actor}">
+        <select name="result">
+            <option value="">全部结果</option>
+            <option value="ok" th:selected="${result == 'ok'}">ok</option>
+            <option value="denied" th:selected="${result == 'denied'}">denied</option>
+            <option value="error" th:selected="${result == 'error'}">error</option>
+        </select>
+        <button type="submit">筛选</button>
+    </form>
+    <section class="panel">
+        <table>
+            <thead><tr><th>时间</th><th>角色</th><th>操作者</th><th>动作</th><th>目标</th><th>结果</th><th>原因</th><th>request</th></tr></thead>
+            <tbody>
+            <tr th:each="r : ${rows}">
+                <td class="mono small" th:text="${r['occurred_at']}"></td>
+                <td th:text="${r['actor_type']}"></td>
+                <td th:text="${r['actor_label']} ?: '—'"></td>
+                <td class="mono" th:text="${r['action']}"></td>
+                <td><span class="mono small" th:text="${r['target_type']} ?: ''"></span> <span th:text="${r['target_id']} ?: ''"></span></td>
+                <td><span class="pill" th:text="${r['result']}" th:classappend="' ' + ${r['result']}"></span></td>
+                <td class="muted small" th:text="${r['reason']} ?: ''"></td>
+                <td class="mono small" th:text="${r['request_id']} ?: ''"></td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</main>
+<footer th:replace="~{admin/layout :: foot}"></footer>
+</body>
+</html>

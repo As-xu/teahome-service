@@ -1,0 +1,38 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="|${title} · TeaHomeService|">TeaHomeService</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+<header class="top" th:fragment="nav">
+    <div class="brand">
+        <span class="mark">茶</span>
+        <div><strong>TeaHomeService</strong><small>管理端 · 127.0.0.1:18081</small></div>
+    </div>
+    <nav>
+        <a th:href="@{/admin}" th:classappend="${currentPath == '/admin'} ? 'on'">概览</a>
+        <a th:href="@{/admin/config}" th:classappend="${currentPath == '/admin/config'} ? 'on'">配置</a>
+        <a th:href="@{/admin/sources}" th:classappend="${currentPath == '/admin/sources'} ? 'on'">源</a>
+        <a th:href="@{/admin/crawl}" th:classappend="${currentPath == '/admin/crawl'} ? 'on'">抓取</a>
+        <a th:href="@{/admin/tokens}" th:classappend="${currentPath == '/admin/tokens'} ? 'on'">Token</a>
+        <a th:href="@{/admin/audit}" th:classappend="${currentPath == '/admin/audit'} ? 'on'">审计</a>
+    </nav>
+    <div class="who" th:if="${adminUser != null}">
+        <span th:text="${adminUser.username}">admin</span>
+        <span class="role" th:text="${adminUser.role}">owner</span>
+        <span class="sudo" th:if="${!adminUser.hasSudo()}">需要 sudo</span>
+        <form th:action="@{/admin/logout}" method="post">
+            <input type="hidden" name="_csrf" th:value="${csrf}">
+            <button class="link" type="submit">退出</button>
+        </form>
+    </div>
+</header>
+<footer class="foot" th:fragment="foot">
+    <span>仅回环监听，经 SSH 隧道访问</span>
+    <span>Schema 10 · P4</span>
+</footer>
+</body>
+</html>

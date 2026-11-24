@@ -1,0 +1,93 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: head('概览')}"></head>
+<body>
+<header th:replace="~{admin/layout :: nav}"></header>
+<main class="wrap">
+    <div class="headline">
+        <div>
+            <p class="eyebrow">P4 · OVERVIEW</p>
+            <h1>今天这台机器在做什么</h1>
+            <p class="muted">只读概览；写操作需要 sudo 与二次确认。</p>
+        </div>
+        <div class="actions">
+            <form th:action="@{/admin/crawl/trigger}" method="post" th:if="${adminUser.canWrite()}">
+                <input type="hidden" name="_csrf" th:value="${csrf}">
+                <button type="submit">手动抓取 hourly</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="banner" th:if="${!adminUser.hasSudo()}">
+        当前会话没有 sudo，配置/源/Token 写操作会被拒绝。
+        <form class="inline" th:action="@{/admin/sudo}" method="post">
+            <input type="hidden" name="_csrf" th:value="${csrf}">
+            <input type="hidden" name="next" th:value="${currentPath}">
+            <input type="password" name="password" placeholder="再次输入密码" required>
+            <button type="submit">提权 5 分钟</button>
+        </form>
+    </div>
+
+    <section class="cards">
+        <article class="card"><span>有效条目</span><b th:text="${#numbers.formatInteger(counts['items'], 0, 'COMMA')}">0</b><small>8 天窗口内</small></article>
+        <article class="card"><span>合并标题</span><b th:text="${#numbers.formatInteger(counts['groups'], 0, 'COMMA')}">0</b><small>title_group</small></article>
+        <article class="card"><span>启用源</span><b th:text="${counts['sources']}">0</b><small>共 7 个种子源</small></article>
+        <article class="card"><span>已过期未清</span><b th:text="${counts['expired']}">0</b><small>retention 待删</small></article>
+        <article class="card"><span>最晚过期</span><b class="small" th:text="${counts['max_expiry']}">—</b><small>UTC</small></article>
+        <article class="card"><span>最新 vod_time</span><b class="small" th:text="${counts['max_vod_time']}">—</b><small>源站时间</small></article>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head"><h2>最近抓取</h2><a th:href="@{/admin/crawl}">全部</a></div>
+        <table>
+            <thead><tr><th>#</th><th>类型</th><th>状态</th><th>源</th><th>入库</th><th>耗时</th><th>开始</th></tr></thead>
+            <tbody>
+            <tr th:each="r : ${runs}">
+                <td th:text="${r['id']}"></td>
+                <td th:text="${r['run_kind']}"></td>
+                <td><span class="pill" th:text="${r['status']}" th:classappend="' ' + ${r['status']}"></span></td>
+                <td th:text="${r['source_ok']} + '/' + ${r['source_total']}"></td>
+                <td th:text="${r['items_upserted']}"></td>
+                <td th:text="${r['duration_ms']} + ' ms'"></td>
+                <td class="mono" th:text="${r['started_at']}"></td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <div class="grid-2">
+        <section class="panel">
+            <div class="panel-head"><h2>源健康</h2><a th:href="@{/admin/sources}">管理</a></div>
+            <table>
+                <thead><tr><th>源</th><th>状态</th><th>连败</th><th>最近成功</th></tr></thead>
+                <tbody>
+                <tr th:each="s : ${sources}">
+                    <td><b th:text="${s['name']}"></b><small class="mono" th:text="${s['id']}"></small></td>
+                    <td><span class="pill" th:classappend="${s['is_enabled']} ? ' ok' : ' off'" th:text="${s['is_enabled']} ? '启用' : '停用'"></span></td>
+                    <td th:text="${s['consecutive_failures']}"></td>
+                    <td class="mono" th:text="${s['last_ok_at']} ?: '—'"></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+        <section class="panel">
+            <div class="panel-head"><h2>最近审计</h2><a th:href="@{/admin/audit}">全部</a></div>
+            <table>
+                <thead><tr><th>时间</th><th>动作</th><th>目标</th><th>结果</th></tr></thead>
+                <tbody>
+                <tr th:each="a : ${audits}">
+                    <td class="mono" th:text="${a['occurred_at']}"></td>
+                    <td th:text="${a['action']}"></td>
+                    <td th:text="${a['target_id']}"></td>
+                    <td th:text="${a['result']}"></td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <p class="muted small">数据库 <b th:text="${dbSize}"></b> · schema <b th:text="${schemaVersion}"></b> · 管理端仅本机回环。</p>
+</main>
+<footer th:replace="~{admin/layout :: foot}"></footer>
+</body>
+</html>

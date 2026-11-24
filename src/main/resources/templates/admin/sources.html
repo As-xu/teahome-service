@@ -1,0 +1,37 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: head('源')}"></head>
+<body>
+<header th:replace="~{admin/layout :: nav}"></header>
+<main class="wrap">
+    <div class="headline">
+        <div><p class="eyebrow">P4 · SOURCES</p><h1>源开关</h1>
+            <p class="muted">停用会立即影响下一轮抓取与客户端可选源；操作需 sudo。</p></div>
+    </div>
+    <div class="banner ok" th:if="${saved}" th:text="${saved}"></div>
+    <section class="panel">
+        <table>
+            <thead><tr><th>源</th><th>类型</th><th>状态</th><th>健康</th><th>最近错误</th><th>操作</th></tr></thead>
+            <tbody>
+            <tr th:each="s : ${sources}">
+                <td><b th:text="${s['name']}"></b><small class="mono" th:text="${s['id']} + ' · ' + ${s['base_url']}"></small></td>
+                <td><span class="mono" th:text="${s['kind']}"></span></td>
+                <td><span class="pill" th:classappend="${s['is_enabled']} ? ' ok' : ' off'" th:text="${s['is_enabled']} ? '启用' : '停用'"></span></td>
+                <td><span th:text="${s['consecutive_failures']} + ' 连败'"></span><small class="mono" th:text="${s['last_ok_at']} ?: '从未成功'"></small></td>
+                <td class="muted small"><span th:text="${s['last_error_code']} ?: '—'"></span><br><span th:text="${s['last_error_detail']} ?: ''"></span></td>
+                <td>
+                    <form th:action="@{/admin/sources/{id}/toggle(id=${s['id']})}" method="post" class="row-form">
+                        <input type="hidden" name="_csrf" th:value="${csrf}">
+                        <input type="hidden" name="enabled" th:value="${!s['is_enabled']}">
+                        <input name="reason" placeholder="原因" required maxlength="200">
+                        <button type="submit" th:text="${s['is_enabled']} ? '停用' : '启用'">切换</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</main>
+<footer th:replace="~{admin/layout :: foot}"></footer>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: head('抓取')}"></head>
+<body>
+<header th:replace="~{admin/layout :: nav}"></header>
+<main class="wrap">
+    <div class="headline">
+        <div><p class="eyebrow">P4 · CRAWL</p><h1>抓取运行</h1>
+            <p class="muted">手动触发只跑 hourly，10 分钟内只能一次；daily/retention 仍由调度器执行。</p></div>
+        <form th:action="@{/admin/crawl/trigger}" method="post" th:if="${adminUser.canWrite()}">
+            <input type="hidden" name="_csrf" th:value="${csrf}">
+            <button type="submit">触发 hourly</button>
+        </form>
+    </div>
+    <div class="banner ok" th:if="${saved}" th:text="${saved}"></div>
+    <div class="banner error" th:if="${error}" th:text="${error}"></div>
+    <section class="panel">
+        <table>
+            <thead><tr><th>#</th><th>类型</th><th>状态</th><th>窗口</th><th>源</th><th>页 / 条目 / 入库</th><th>失败</th><th>耗时</th><th>触发</th><th>错误</th></tr></thead>
+            <tbody>
+            <tr th:each="r : ${runs}">
+                <td th:text="${r['id']}"></td>
+                <td th:text="${r['run_kind']}"></td>
+                <td><span class="pill" th:text="${r['status']}" th:classappend="' ' + ${r['status']}"></span></td>
+                <td class="mono small" th:text="${r['window_from']} + ' → ' + ${r['window_to']}"></td>
+                <td th:text="${r['source_ok']} + '/' + ${r['source_total']}"></td>
+                <td th:text="${r['items_fetched']} + ' / ' + ${r['items_upserted']}"></td>
+                <td th:text="${r['failures']} + ' / ' + ${r['source_failed']} + ' 源'"></td>
+                <td th:text="${r['duration_ms']} + ' ms'"></td>
+                <td class="mono small" th:text="${r['triggered_by']}"></td>
+                <td class="muted small"><span th:text="${r['error_code']} ?: ''"></span></td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</main>
+<footer th:replace="~{admin/layout :: foot}"></footer>
+</body>
+</html>

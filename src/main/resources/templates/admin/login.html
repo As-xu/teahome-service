@@ -1,0 +1,23 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/layout :: head('登录')}"></head>
+<body class="login-body">
+<main class="login">
+    <div class="mark big">茶</div>
+    <h1>TeaHomeService</h1>
+    <p class="muted">管理端只监听 127.0.0.1，请先建立 SSH 隧道：<code>ssh -N -L 18081:127.0.0.1:18081 xs@192.168.5.156 -p 30022</code></p>
+    <div class="notice" th:if="${userCount == 0}">
+        还没有管理员账号。在服务器执行
+        <code>docker compose --profile admin run --rm teahome-admin --reset-admin-password</code>
+        初始化。
+    </div>
+    <div class="error" th:if="${error}" th:text="${error}">用户名或密码错误</div>
+    <form method="post" th:action="@{/admin/login}" th:if="${userCount > 0}">
+        <label>用户名 <input name="username" autocomplete="username" required autofocus></label>
+        <label>密码 <input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">登录</button>
+    </form>
+    <p class="muted small">会话 30 分钟空闲过期，最多 3 个并发会话；连续失败会按 IP 退避。</p>
+</main>
+</body>
+</html>

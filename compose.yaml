@@ -110,6 +110,41 @@ services:
     pids_limit: 128
     mem_limit: 512m
 
+  teahome-admin:
+    image: teahome-service:${API_TAG:-dev}
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      teahome-db:
+        condition: service_healthy
+    env_file: /opt/teahome/env/.env
+    environment:
+      TEAHOME_ROLE: admin
+      SPRING_FLYWAY_ENABLED: "false"
+      TEAHOME_DB_URL: jdbc:postgresql://192.168.5.156:5432/teahome
+      TEAHOME_DB_USER: teahome_app
+      TEAHOME_DB_PASSWORD_FILE: /run/secrets/db_app
+      TEAHOME_ADMIN_BIND: 127.0.0.1
+      TEAHOME_ADMIN_PORT: "18081"
+      TEAHOME_CRAWL_ENABLED: "false"
+      TEAHOME_SCHEDULING_ENABLED: "false"
+      TZ: UTC
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:+UseSerialGC -XX:-UsePerfData"
+    secrets: [db_app]
+    command: ["--spring.profiles.active=admin"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:18081/actuator/health | grep -q UP"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
   teahome-crawl:
     image: teahome-service:${API_TAG:-dev}
     profiles: ["crawl"]

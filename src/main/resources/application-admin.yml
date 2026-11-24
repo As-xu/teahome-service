@@ -1,0 +1,25 @@
+server:
+  address: ${TEAHOME_ADMIN_BIND:127.0.0.1}
+  port: ${TEAHOME_ADMIN_PORT:18081}
+  forward-headers-strategy: none
+
+spring:
+  thymeleaf:
+    cache: false
+
+teahome:
+  scheduling-enabled: false
+  crawl:
+    enabled: false
+  admin:
+    enabled: true
+    idle-minutes: 30
+    absolute-hours: 12
+    max-sessions: 3
+    sudo-minutes: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
