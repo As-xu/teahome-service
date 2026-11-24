@@ -11,6 +11,7 @@ import java.util.Map;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.teaplayer.teahome.api.ApiException;
 import com.teaplayer.teahome.api.Cursor;
@@ -40,6 +41,7 @@ public class FeedService {
         this.classifier = classifier;
     }
 
+    @Transactional(readOnly = true)
     public FeedDtos.FeedResponse feed(String category, String cursorValue, int size) {
         if (size < 1 || size > 60) {
             throw ApiException.badRequest("bad_size", "size 必须在 1 到 60 之间");
@@ -114,6 +116,7 @@ public class FeedService {
                 classifier.version(), schemaVersion.schemaVersion());
     }
 
+    @Transactional(readOnly = true)
     public FeedDtos.CategoriesResponse categories() {
         CategoriesCache cached = categoriesCache;
         long nowMillis = System.currentTimeMillis();
@@ -125,12 +128,16 @@ public class FeedService {
             counts.put(key, 0);
         }
         jdbc.sql("""
-                SELECT primary_category, count(*) AS n
-                  FROM teaplayer_title_group
-                 WHERE item_count > 0 AND expires_at > now()
-                 GROUP BY primary_category
+                SELECT code, count(*) AS n
+                  FROM (
+                        SELECT DISTINCT g.id, code
+                          FROM teaplayer_title_group g,
+                               unnest(g.category_codes) AS code
+                         WHERE g.item_count > 0 AND g.expires_at > now()
+                       ) t
+                 GROUP BY code
                 """).query((rs, n) -> {
-            counts.put(rs.getString("primary_category"), rs.getInt("n"));
+            counts.put(rs.getString("code"), rs.getInt("n"));
             return null;
         }).list();
 

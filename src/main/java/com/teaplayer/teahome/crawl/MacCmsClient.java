@@ -63,6 +63,11 @@ public class MacCmsClient {
     }
 
     public Map<String, RawItem> details(SourceRow source, SourceSpec spec, List<String> ids) {
+        return details(source, spec, ids, ATTEMPTS, Duration.ofSeconds(25));
+    }
+
+    public Map<String, RawItem> details(SourceRow source, SourceSpec spec, List<String> ids,
+                                        int attempts, Duration timeout) {
         if (ids.isEmpty()) {
             return Map.of();
         }
@@ -70,7 +75,7 @@ public class MacCmsClient {
                 "ids", String.join(",", ids),
                 "keyword", "",
                 "page", ""));
-        JsonNode root = getJson(url, source);
+        JsonNode root = getJson(url, source, attempts, timeout);
         List<RawItem> items = parseItems(root, spec, Instant.now());
         Map<String, RawItem> out = new LinkedHashMap<>();
         for (RawItem item : items) {
@@ -127,15 +132,19 @@ public class MacCmsClient {
     }
 
     private JsonNode getJson(String url, SourceRow source) {
+        return getJson(url, source, ATTEMPTS, Duration.ofSeconds(25));
+    }
+
+    private JsonNode getJson(String url, SourceRow source, int attempts, Duration timeout) {
         URI uri = URI.create(url);
         String host = uri.getHost();
         if (host == null || !source.allows(host) || isPrivateHost(host)) {
             throw new IllegalStateException("上游主机不在 allow_hosts 内: " + host);
         }
-        for (int attempt = 1; attempt <= ATTEMPTS; attempt++) {
+        for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
                 HttpRequest request = HttpRequest.newBuilder(uri)
-                        .timeout(Duration.ofSeconds(25))
+                        .timeout(timeout)
                         .header("User-Agent", USER_AGENT)
                         .header("Accept", "application/json")
                         .GET()
@@ -144,7 +153,7 @@ public class MacCmsClient {
                 int code = response.statusCode();
                 if (code < 200 || code >= 300) {
                     response.body().close();
-                    if (code >= 500 && attempt < ATTEMPTS) {
+                    if (code >= 500 && attempt < attempts) {
                         sleep(300L * attempt);
                         continue;
                     }
@@ -155,7 +164,7 @@ public class MacCmsClient {
                 pause();
                 return root;
             } catch (IOException e) {
-                if (attempt < ATTEMPTS) {
+                if (attempt < attempts) {
                     sleep(300L * attempt);
                     continue;
                 }

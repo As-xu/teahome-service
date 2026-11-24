@@ -83,7 +83,7 @@ public class ItemService {
             throw ApiException.notFound("该源暂不支持实时详情");
         }
         SourceSpec spec = source.parsedSpec();
-        RawItem raw = client.details(source, spec, List.of(itemId)).get(itemId);
+        RawItem raw = client.details(source, spec, List.of(itemId), 1, java.time.Duration.ofSeconds(8)).get(itemId);
         if (raw == null) {
             throw ApiException.notFound("未找到资源: " + itemId);
         }
