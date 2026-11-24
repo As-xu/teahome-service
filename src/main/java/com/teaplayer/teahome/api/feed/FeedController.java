@@ -9,24 +9,30 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.concurrent.TimeUnit;
 
+import com.teaplayer.teahome.config.ConfigService;
+
 @RestController
 @RequestMapping("/v1")
 public class FeedController {
 
     private final FeedService feedService;
+    private final ConfigService config;
 
-    public FeedController(FeedService feedService) {
+    public FeedController(FeedService feedService, ConfigService config) {
         this.feedService = feedService;
+        this.config = config;
     }
 
     @GetMapping("/feed")
     public ResponseEntity<FeedDtos.FeedResponse> feed(
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "24") int size) {
+            @RequestParam(required = false) Integer size) {
+        int effective = size == null
+                ? config.intValue("feed.page_size_default", 24) : size;
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.maxAge(30, TimeUnit.SECONDS).cachePrivate())
-                .body(feedService.feed(category, cursor, size));
+                .body(feedService.feed(category, cursor, effective));
     }
 
     @GetMapping("/categories")
