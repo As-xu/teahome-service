@@ -45,9 +45,23 @@ sudo netfilter-persistent save
 sudo /usr/local/sbin/teahome-fw.sh   # 仅当脚本已回退到旧版本
 ```
 
-## 需要你决定
+## 你的决定（2026-11-25）
 
-1. 是否关闭 SSH 密码登录（`PasswordAuthentication no`）？当前只有一把 key（`xusong@xspc`），我们的 Windows 可正常登录；关闭后其他用密码的设备会失效，但 key 仍可用。
-2. 是否把 age 私钥移出服务器（离线 U 盘/密码管理器）？移走后备份仍可解，但主机沦陷不再同时丢密钥。
-3. GitHub 仓库是否需要改为 private？当前 HTTPS 检测超时，无法确认可见性。
-4. 开发机 IP 是否固定为 `192.168.5.155`？若会变，5432 放行需同步调整。
+1. **SSH 密码登录：保持开启**。30022 已只允许 `192.168.5.0/24` IPv4，IPv6 已封；风险从公网降到局域网。仍建议使用强密码，后续可再关闭。
+2. **age 私钥：尚未移动**。见下一节。
+3. **GitHub 仓库：保持现状**。HTTPS 检测超时，无法确认 public/private；若为 public，代码可见，但仓库中没有 service_role/私钥。
+4. **开发机 IP：已固定**。Windows 以太网 `Dhcp=Disabled`，地址 `192.168.5.155`；5432 规则与之匹配。
+
+## age 备份私钥说明
+
+- 服务器用 age **公钥**加密备份：`age -r "$(cat secrets/backup.pub)" -o ...`；公钥 `age1vft89f2kptf0hdm742dgskln90e58plzpc4832q0zyk2hdjpwp6qucngu2` 只能加密，不能解密。
+- 解密需要私钥 `/root/teahome-backup.age.key`（root 0400，189 字节）。它和备份在同一台机器：主机被入侵或磁盘被拿走时，攻击者同时拿到密文和私钥，加密就失去意义。
+- 推荐：把私钥复制到离线介质（U 盘/密码管理器/另一台电脑），确认能解密一份备份后，再从服务器 `shred -u` 删除；服务器只保留公钥。
+- 风险：私钥丢失 = 备份永久不可恢复，请存两份，并定期演练解密。
+- 在服务器上验证解密（删除前）：
+
+```bash
+age -d -i /root/teahome-backup.age.key -o /tmp/restore.dump /opt/teahome/backups/teahome-2026-11-24_0330.dump.age
+pg_restore --list /tmp/restore.dump | head
+shred -u /tmp/restore.dump
+```
