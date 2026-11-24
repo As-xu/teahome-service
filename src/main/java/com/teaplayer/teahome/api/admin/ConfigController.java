@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,6 +73,9 @@ public class ConfigController {
         ConfigService.Entry current = config.entries().get(key);
         if (current == null) {
             throw ApiException.notFound("unknown config key");
+        }
+        if ("env".equals(current.source())) {
+            throw ApiException.conflict("config is managed by environment");
         }
         if (current.secret()) {
             throw ApiException.badRequest("secret_not_supported", "secret updates are not enabled in P3");
