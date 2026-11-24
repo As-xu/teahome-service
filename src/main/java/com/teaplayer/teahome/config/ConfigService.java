@@ -206,7 +206,7 @@ public class ConfigService {
 
     public void notifyChange(String key) {
         try {
-            jdbc.sql("SELECT pg_notify('teahome_config', :payload)")
+            jdbc.sql("SELECT pg_notify('teaplayer_config', :payload)")
                     .param("payload", key)
                     .query(String.class)
                     .optional();
