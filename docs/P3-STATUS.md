@@ -1,20 +1,21 @@
 # P3 配置中心状态
 
 日期：2026-11-24
-版本：P3 核心（配置定义 + 运行时快照 + 管理 API）
+版本：P3.1（配置中心 + 加密 secret + LISTEN/NOTIFY）
 
 ## 已交付
 
 | 能力 | 实现 |
 | --- | --- |
-| 配置定义 | `R__10_seed_config_defs.sql` 可重复迁移，21 个键；只 upsert 定义，不碰值 |
+| 配置定义 | `R__10_seed_config_defs.sql` 可重复迁移，22 个键；只 upsert 定义，不碰值 |
 | 配置值 | `teaplayer_config_value.value_json`，仅修改过的键才有行；删除行=恢复默认 |
 | 优先级 | `TEAHOME_CFG_<KEY>` 环境变量 > 数据库 > `config_def.default_value` |
 | 快照 | `ConfigService` 启动加载，不可变快照原子替换；失败保留上一版 |
-| 刷新 | 管理 PUT 后立即 reload；带调度角色的实例每 30 秒 reload 一次 |
+| 刷新 | 管理 PUT 后立即 reload + `NOTIFY teaplayer_config`；`ConfigPoller` 独立守护线程每 30 秒兜底（与抓取调度解耦） |
 | 校验 | 类型（int/long/bool/duration/bytes/url/string）+ min/max + URL 前缀 |
 | 管理读取 | `GET /v1/admin/config`，read/admin scope，secret 掩码 |
-| 管理写入 | `PUT /v1/admin/config/{key}`，admin scope；reason、expectedVersion、revision、audit 同事务 |
+| 管理写入 | `PUT /v1/admin/config/{key}`，admin scope；reason、expectedVersion、revision、audit 同事务；`revision_no = max+1` |
+| secret | AES-256-GCM（`TEAHOME_CONFIG_KEYS` 密钥环、AAD 绑定 key、`key_id` 落库）；出口恒为 `******` |
 | 热生效接入 | `retention.ttl_days`（ItemWriter）、`feed.page_size_default` / `page_size_max`、三个限流键 |
 
 首批键：`retention.ttl_days`、`retention.cleanup_batch_size`、`crawl.hourly.enabled`、
@@ -35,15 +36,22 @@
 - `/%76%31/feed?size=2` 仍返回 401（编码路径鉴权修复保持）。
 - 测试 token 与临时配置行已删除；`feed.page_size_default` 回到 default。
 
-## 未完成 / P3.1
+## P3.1 验收记录
 
-1. secret 类型：AES-256-GCM 信封加密、`TEAHOME_CONFIG_KEYS` 密钥环、`key_id` 落库、掩码出口——当前 PUT 明确拒绝 `is_secret` 键。
-2. `LISTEN/NOTIFY` 即时跨实例刷新（现为 30 秒轮询 + PUT 本地 reload）。
+- secret：写入 `system.webhook_secret` 后 `value_json IS NULL`、`octet_length(value_cipher)=32`、`key_id=k2`、`value_hint=******`；GET 始终掩码；重启/重载解密成功。
+- LISTEN：手工 `NOTIFY teaplayer_config` 后 api/crawler 均立即 reload；修复通知频道与监听频道不一致的 bug。
+- 跨实例：PUT 后 crawler 日志出现「收到配置变更通知」，无需等 30 秒。
+- 清理：测试 token、`feed.page_size_default` 临时值、`system.webhook_secret` 测试值已删除，配置回到默认 24。
+- 注意：API 实例关闭抓取调度后，原 `@Scheduled` 不生效；已新增独立 `ConfigPoller`。
+
+## 未完成 / 后续
+
+1. `apply_mode` 的 `next_run` / `restart` 仍只记录，未实际延后。
+2. secret revision 未保存密文，无法回滚 secret 历史值。
 3. 启动时 def 漂移检查（缺键/未知键/类型变化）。
-4. `apply_mode` 的 `next_run` / `restart` 仅记录，未阻止热更新；`next_run` 需在抓取轮次开始时取快照。
-5. 跨键约束（如 `search.deadline >= timeout_per_source`）尚未强制。
-6. 管理端页面、角色/会话/回滚 UI 属 P4；当前只有 token API。
-7. 无 ConfigService 单测/集成测试（仅编译与手工验收）。
+4. 跨键约束已实现基础检查，尚未覆盖全部 6 条。
+5. 管理端页面/会话/回滚 UI 属 P4；当前只有 token API。
+6. 无 ConfigService 集成测试（仅单测 + 手工验收）。
 
 ## 运维
 
