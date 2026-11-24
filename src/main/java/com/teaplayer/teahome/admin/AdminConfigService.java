@@ -72,6 +72,8 @@ public class AdminConfigService {
         if (reason == null || reason.isBlank() || reason.length() > 200) {
             throw new IllegalArgumentException("reason is required (max 200)");
         }
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtext(:key))")
+                .param("key", "cfg:" + key).query().listOfRows();
         ConfigService.Entry current = config.entries().get(key);
         if (current == null) {
             throw new IllegalArgumentException("unknown config key");
@@ -82,7 +84,10 @@ public class AdminConfigService {
         if (!"hot".equals(current.applyMode())) {
             throw new IllegalArgumentException("该键需要 next_run 或重启，本页只改 hot 键");
         }
-        if (expectedVersion != null && expectedVersion != current.version()) {
+        Long dbVersion = jdbc.sql("""
+                SELECT version FROM teaplayer_config_value WHERE config_key = :key
+                """).param("key", key).query(Long.class).optional().orElse(0L);
+        if (expectedVersion != null && expectedVersion != dbVersion) {
             throw new IllegalArgumentException("版本已变化，请刷新后重试");
         }
         SecretBox.Sealed sealed = null;
@@ -98,7 +103,8 @@ public class AdminConfigService {
         } else {
             normalized = config.validateChange(key, rawValue);
         }
-        long nextVersion = jdbc.sql("""
+        long nextVersion = dbVersion + 1;
+        long nextRevision = jdbc.sql("""
                 SELECT COALESCE(MAX(revision_no), 0) + 1
                   FROM teaplayer_config_revision WHERE config_key = :key
                 """).param("key", key).query(Long.class).single();
@@ -137,7 +143,7 @@ public class AdminConfigService {
                 VALUES (:key, :revision, :kind, CAST(:oldValue AS jsonb), CAST(:newValue AS jsonb),
                         :reason, 'admin', :actorId, :actorLabel, :requestId)
                 """)
-                .param("key", key).param("revision", nextVersion)
+                .param("key", key).param("revision", nextRevision)
                 .param("kind", "db".equals(current.source()) ? "update" : "create")
                 .param("oldValue", "db".equals(current.source()) && !current.secret()
                         ? current.value() : null)

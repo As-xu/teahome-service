@@ -39,6 +39,7 @@ public class AdminSourceController {
     }
 
     @PostMapping("/admin/sources/{id}/toggle")
+    @org.springframework.transaction.annotation.Transactional
     public String toggle(@PathVariable("id") String id,
                          @RequestParam("enabled") boolean enabled,
                          @RequestParam("reason") String reason,
@@ -46,15 +47,25 @@ public class AdminSourceController {
         AdminSessionInfo session = AdminModelAdvice.requireWriter(request);
         AdminModelAdvice.requireSudo(session);
         if (reason == null || reason.isBlank()) {
-            return "redirect:/admin/sources?saved=" + enc("reason required");
+            return "redirect:/admin/sources?error=" + enc("reason required");
         }
-        jdbc.sql("""
+        Boolean old = jdbc.sql("""
+                SELECT is_enabled FROM teaplayer_source
+                 WHERE id = :id AND deleted_at IS NULL FOR UPDATE
+                """).param("id", id).query(Boolean.class).optional().orElse(null);
+        if (old == null) {
+            return "redirect:/admin/sources?error=" + enc("源不存在");
+        }
+        int rows = jdbc.sql("""
                 UPDATE teaplayer_source
                    SET is_enabled = :enabled, updated_at = now(), revision = revision + 1
-                 WHERE id = :id
+                 WHERE id = :id AND deleted_at IS NULL
                 """).param("enabled", enabled).param("id", id).update();
+        if (rows != 1) {
+            return "redirect:/admin/sources?error=" + enc("源更新失败");
+        }
         audit.ok(session, "source.toggle", "source", id,
-                "{\"enabled\":" + (!enabled) + "}", "{\"enabled\":" + enabled + "}",
+                "{\"enabled\":" + old + "}", "{\"enabled\":" + enabled + "}",
                 reason, request);
         return "redirect:/admin/sources?saved=" + enc(id + " → " + (enabled ? "启用" : "停用"));
     }

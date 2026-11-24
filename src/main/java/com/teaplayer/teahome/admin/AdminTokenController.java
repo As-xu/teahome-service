@@ -28,12 +28,15 @@ public class AdminTokenController {
     private final JdbcClient jdbc;
     private final AdminPasswordService passwords;
     private final AdminAuditService audit;
+    private final AdminSessionService sessions;
     private final SecureRandom random = new SecureRandom();
 
-    public AdminTokenController(JdbcClient jdbc, AdminPasswordService passwords, AdminAuditService audit) {
+    public AdminTokenController(JdbcClient jdbc, AdminPasswordService passwords,
+                                AdminAuditService audit, AdminSessionService sessions) {
         this.jdbc = jdbc;
         this.passwords = passwords;
         this.audit = audit;
+        this.sessions = sessions;
     }
 
     @GetMapping("/admin/tokens")
@@ -56,6 +59,7 @@ public class AdminTokenController {
     }
 
     @PostMapping("/admin/tokens")
+    @org.springframework.transaction.annotation.Transactional
     public String create(@RequestParam("label") String label,
                          @RequestParam(value = "read", defaultValue = "false") boolean read,
                          @RequestParam(value = "admin", defaultValue = "false") boolean admin,
@@ -73,6 +77,7 @@ public class AdminTokenController {
         if (scopes.isEmpty()) {
             return "redirect:/admin/tokens?error=" + enc("至少选择一个 scope");
         }
+        expiresDays = Math.max(0, Math.min(expiresDays, 3650));
         String token = newToken();
         String prefix = token.substring(4, 12);
         jdbc.sql("""
@@ -94,19 +99,24 @@ public class AdminTokenController {
     }
 
     @PostMapping("/admin/tokens/{id}/revoke")
+    @org.springframework.transaction.annotation.Transactional
     public String revoke(@PathVariable("id") long id, HttpServletRequest request) {
         AdminSessionInfo session = AdminModelAdvice.requireWriter(request);
         AdminModelAdvice.requireSudo(session);
-        jdbc.sql("""
+        int rows = jdbc.sql("""
                 UPDATE teaplayer_api_token
                    SET status = 'revoked', revoked_at = now(), revoked_by = :by
                  WHERE id = :id AND status = 'active'
                 """).param("by", "admin:" + session.username()).param("id", id).update();
+        if (rows == 0) {
+            return "redirect:/admin/tokens?error=" + enc("令牌不存在或已吊销");
+        }
         audit.ok(session, "token.revoke", "api_token", String.valueOf(id), null, null, null, request);
         return "redirect:/admin/tokens?saved=已吊销";
     }
 
     @PostMapping("/admin/users")
+    @org.springframework.transaction.annotation.Transactional
     public String createUser(@RequestParam("username") String username,
                              @RequestParam(value = "displayName", defaultValue = "") String displayName,
                              @RequestParam("role") String role,
@@ -116,6 +126,9 @@ public class AdminTokenController {
         AdminModelAdvice.requireSudo(session);
         if (!role.equals("owner") && !role.equals("admin") && !role.equals("viewer")) {
             return "redirect:/admin/tokens?error=" + enc("角色不合法");
+        }
+        if ("owner".equals(role)) {
+            AdminModelAdvice.requireOwner(request);
         }
         if (password.length() < 12) {
             return "redirect:/admin/tokens?error=" + enc("密码至少 12 位");
@@ -142,6 +155,7 @@ public class AdminTokenController {
     }
 
     @PostMapping("/admin/users/{id}/password")
+    @org.springframework.transaction.annotation.Transactional
     public String resetPassword(@PathVariable("id") long id,
                                 @RequestParam("password") String password,
                                 HttpServletRequest request) {
@@ -150,14 +164,23 @@ public class AdminTokenController {
         if (password.length() < 12) {
             return "redirect:/admin/tokens?error=" + enc("密码至少 12 位");
         }
-        jdbc.sql("""
+        var target = jdbc.sql("SELECT role FROM teaplayer_admin_user WHERE id = :id")
+                .param("id", id).query(String.class).optional().orElse(null);
+        if (target == null) {
+            return "redirect:/admin/tokens?error=" + enc("管理员不存在");
+        }
+        if ("owner".equals(target)) {
+            AdminModelAdvice.requireOwner(request);
+        }
+        int rows = jdbc.sql("""
                 UPDATE teaplayer_admin_user
                    SET password_hash = :hash, must_change_password = false,
                        password_changed_at = now(), updated_at = now(), revision = revision + 1
                  WHERE id = :id
                 """).param("hash", passwords.hash(password)).param("id", id).update();
+        int revoked = sessions.revokeAllForUser(id);
         audit.ok(session, "admin_user.password.reset", "admin_user", String.valueOf(id),
-                null, null, null, request);
+                null, null, "revoked_sessions=" + revoked + ", rows=" + rows, request);
         return "redirect:/admin/tokens?saved=密码已重置";
     }
 

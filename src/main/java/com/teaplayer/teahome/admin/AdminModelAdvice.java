@@ -45,6 +45,14 @@ public class AdminModelAdvice {
         return session;
     }
 
+    static AdminSessionInfo requireOwner(HttpServletRequest request) {
+        AdminSessionInfo session = requireWriter(request);
+        if (!"owner".equals(session.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "owner required");
+        }
+        return session;
+    }
+
     static void requireSudo(AdminSessionInfo session) {
         if (!session.sudoValid(java.time.Instant.now())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "sudo required");

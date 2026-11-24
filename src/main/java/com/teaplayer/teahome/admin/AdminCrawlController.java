@@ -61,14 +61,18 @@ public class AdminCrawlController {
         if (last != null && last.isAfter(OffsetDateTime.now().minusMinutes(10))) {
             return "redirect:/admin/crawl?error=" + enc("10 分钟内已触发过，请稍后");
         }
+        try {
+            executor.execute(() -> {
+                try {
+                    crawlService.run("hourly", "manual");
+                } catch (RuntimeException ignored) {
+                    // The run row records the failure; the console must not crash.
+                }
+            });
+        } catch (RuntimeException rejected) {
+            return "redirect:/admin/crawl?error=" + enc("抓取队列繁忙，请稍后重试");
+        }
         audit.ok(session, "crawl.trigger", "crawl_run", null, null, null, "manual hourly", request);
-        executor.execute(() -> {
-            try {
-                crawlService.run("hourly", "admin:" + session.username());
-            } catch (RuntimeException ignored) {
-                // The run row records the failure; the console must not crash.
-            }
-        });
         return "redirect:/admin/crawl?saved=" + enc("已触发 hourly，稍后刷新查看结果");
     }
 

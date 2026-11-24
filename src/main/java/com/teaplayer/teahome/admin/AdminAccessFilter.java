@@ -39,7 +39,11 @@ public class AdminAccessFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = PathGate.path(request);
-        return !path.startsWith("/admin") || path.startsWith("/admin/assets");
+        if (path.startsWith("/admin/assets") || path.equals("/actuator/health")
+                || path.equals("/health") || path.startsWith("/error")) {
+            return true;
+        }
+        return false;
     }
 
     @Override

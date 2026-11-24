@@ -29,7 +29,9 @@ public class AdminSessionService {
         this.props = props;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Issued issue(long userId, String ip, String userAgent) {
+        purgeExpired();
         Instant now = Instant.now();
         Instant expires = now.plusSeconds(props.getAbsoluteHours() * 3600L);
         String token = randomToken();
@@ -44,7 +46,7 @@ public class AdminSessionService {
                    AND id IN (
                        SELECT id FROM teaplayer_admin_session
                         WHERE user_id = :userId AND revoked_at IS NULL AND expires_at > now()
-                        ORDER BY last_seen_at ASC
+                        ORDER BY last_seen_at DESC
                         OFFSET :keep
                    )
                 """)
@@ -113,6 +115,15 @@ public class AdminSessionService {
         if (rawToken != null && !rawToken.isBlank()) {
             revoke(AdminHashes.sha256Hex(rawToken));
         }
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public int revokeAllForUser(long userId) {
+        return jdbc.sql("""
+                UPDATE teaplayer_admin_session
+                   SET revoked_at = now()
+                 WHERE user_id = :userId AND revoked_at IS NULL
+                """).param("userId", userId).update();
     }
 
     public int purgeExpired() {

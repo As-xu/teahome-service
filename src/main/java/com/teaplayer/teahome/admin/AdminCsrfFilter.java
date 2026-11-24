@@ -67,6 +67,17 @@ public class AdminCsrfFilter extends OncePerRequestFilter {
             return false;
         }
         String candidate = origin != null ? origin : referer;
+        if (origin == null && referer != null) {
+            try {
+                java.net.URI uri = java.net.URI.create(referer);
+                if (uri.getScheme() == null || uri.getAuthority() == null) {
+                    return false;
+                }
+                candidate = uri.getScheme() + "://" + uri.getAuthority();
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
+        }
         String scheme = request.getScheme();
         String host = request.getServerName();
         int port = request.getServerPort();

@@ -25,6 +25,7 @@ public class AdminLoginController {
     private final AdminLoginThrottle throttle;
     private final AdminAuditService audit;
     private final AdminProperties props;
+    private final String dummyHash;
 
     public AdminLoginController(JdbcClient jdbc, AdminSessionService sessions,
                                 AdminPasswordService passwords, AdminLoginThrottle throttle,
@@ -35,6 +36,7 @@ public class AdminLoginController {
         this.throttle = throttle;
         this.audit = audit;
         this.props = props;
+        this.dummyHash = passwords.hash("teahome-dummy-password-not-used");
     }
 
     @GetMapping("/admin/login")
@@ -67,8 +69,9 @@ public class AdminLoginController {
                         rs.getString("display_name"), rs.getString("password_hash"),
                         rs.getString("role"), rs.getString("status")))
                 .optional();
-        boolean ok = user.isPresent() && "active".equals(user.get().status())
-                && passwords.matches(password, user.get().hash());
+        String hash = user.map(UserRow::hash).orElse(dummyHash);
+        boolean passwordOk = passwords.matches(password, hash);
+        boolean ok = user.isPresent() && "active".equals(user.get().status()) && passwordOk;
         if (!ok) {
             throttle.failure(ip);
             audit.denied(username, "admin.login", "admin_user", username, "bad credentials", request, "bad_credentials");
@@ -110,17 +113,24 @@ public class AdminLoginController {
                        @RequestParam("password") String password,
                        HttpServletRequest request) {
         AdminSessionInfo session = AdminModelAdvice.requireSession(request);
+        String ip = request.getRemoteAddr();
+        if (!throttle.allowed(ip)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "尝试次数过多");
+        }
         UserRow row = jdbc.sql("SELECT id, password_hash FROM teaplayer_admin_user WHERE id = :id")
                 .param("id", session.userId())
                 .query((rs, n) -> new UserRow(rs.getLong("id"), null, null,
                         rs.getString("password_hash"), null, null))
                 .single();
         if (!passwords.matches(password, row.hash())) {
+            throttle.failure(ip);
             audit.denied(session.username(), "admin.sudo", "admin_user", session.username(),
                     "bad password", request, "bad_credentials");
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN, "密码错误");
         }
+        throttle.success(ip);
         sessions.markSudo(session.id());
         audit.ok(session, "admin.sudo", "admin_user", session.username(), null, null, "sudo granted", request);
         return "redirect:" + AdminModelAdvice.safeNext(next);
