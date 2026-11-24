@@ -67,3 +67,19 @@ compose 的 `teahome-admin`：`network_mode: host`、绑定 127.0.0.1、`TEAHOME
 - P4 复核：请专家审阅本次 diff（`02f9d3c` 及后续修复），重点看 CSRF/会话、模板转义、审计一致性。
 - P5 可做：图片缓存 GC、live detail 负缓存、Testcontainers 集成测试、审计归档。
 - 恢复点：管理端无独立数据，回滚镜像即可；V12 只加列/索引，向后兼容。
+
+## 7. 专家复核修复（`727768a` 及后续）
+
+三专家复核发现并已修复：
+
+- **手动抓取空转**：`AdminCrawlController` 改传 `trigger="manual"`；executor 拒绝返回页面错误；审计移到入队成功之后；10 分钟限流只统计 `triggered_by='manual'` 的 run（避免被每小时调度误判）。
+- **admin 垂直提权**：创建 owner、重置 owner 密码都要求当前会话是 owner；重置密码会吊销目标用户全部会话；expired token 天数 clamp 0..3650；revoke 检查行数。
+- **会话淘汰/事务**：`issue()` 改为事务内先 `purgeExpired()`，按 `last_seen_at DESC` 保留最新；新增 `revokeAllForUser`。
+- **配置并发与 JSON**：`update()` 用 `pg_advisory_xact_lock(hashtext('cfg:<key>'))`，`expectedVersion` 从 DB 当前 version 校验，value version 与 revision 分开递增；`ConfigService.quote()` 转义换行/控制字符。
+- **admin 进程暴露 `/v1`**：`AdminAccessFilter` 只放行静态资源与 `/health`、`/actuator/health`、`/error`，其余路径要求管理员会话；实测 `/v1/meta` 返回 302。
+- **CSRF Referer**：无 Origin 时从 Referer 取 `scheme://authority` 再比较，带路径的 Referer 不再误拒。
+- **登录/ sudo 时序与退避**：用户不存在也执行 dummy Argon2；`/admin/sudo` 接同一 IP 退避。
+- **健康检查与初始化**：admin healthcheck 改 `/health`（校验 DB+schema）；`01-roles.sh` 用 `to_regclass` 保护 REVOKE/GRANT，空库初始化不再失败。
+- **审计参数类型**：`target_id` 为 NULL 时显式 `CAST(:targetId AS text)`，手动抓取不再 500。
+
+验证：32 个测试通过；部署 `727768a` 后四容器 healthy；`/v1;x/feed`、`/%76%31/feed` 均 401；错误 Host 421；admin `/v1/meta` 302；手动触发产生 `run=60 status=ok items=109`。
