@@ -168,8 +168,7 @@ public class ConfigController {
                      result, "before", "after", changed_keys, reason, request_id)
                 VALUES ('token', :actorId, :actorLabel, 'config.update', 'config', :key,
                         'ok',
-                        CASE WHEN :before IS NULL THEN NULL
-                             ELSE jsonb_build_object('value', CAST(:before AS jsonb)) END,
+                        jsonb_build_object('value', CAST(:before AS jsonb)),
                         jsonb_build_object('value', CAST(:after AS jsonb)),
                         ARRAY[:key]::text[], :reason, :requestId)
                 """)
@@ -177,7 +176,7 @@ public class ConfigController {
                 .param("actorLabel", principal.label())
                 .param("key", key)
                 .param("before", current.source().equals("db")
-                        ? (current.secret() ? "\"******\"" : current.value()) : null)
+                        ? (current.secret() ? "\"******\"" : current.value()) : "null")
                 .param("after", current.secret() ? "\"******\"" : normalized)
                 .param("reason", request.reason())
                 .param("requestId", requestId)
