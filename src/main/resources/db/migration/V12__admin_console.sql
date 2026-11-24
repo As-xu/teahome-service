@@ -2,7 +2,7 @@
 ALTER TABLE teaplayer_admin_session
     ADD COLUMN sudo_until timestamptz;
 
-CREATE INDEX ix_admin_session__expires
+CREATE INDEX IF NOT EXISTS ix_admin_session__expires
     ON teaplayer_admin_session (expires_at);
 
 UPDATE teaplayer_service_meta
