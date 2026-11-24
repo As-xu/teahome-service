@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.teaplayer.teahome.api.ApiException;
 import com.teaplayer.teahome.api.Cursor;
+import com.teaplayer.teahome.config.ConfigService;
 import com.teaplayer.teahome.crawl.CategoryClassifier;
 import com.teaplayer.teahome.web.SchemaVersionProvider;
 
@@ -32,19 +33,23 @@ public class FeedService {
     private final JdbcClient jdbc;
     private final SchemaVersionProvider schemaVersion;
     private final CategoryClassifier classifier;
+    private final ConfigService config;
 
     private volatile CategoriesCache categoriesCache;
 
-    public FeedService(JdbcClient jdbc, SchemaVersionProvider schemaVersion, CategoryClassifier classifier) {
+    public FeedService(JdbcClient jdbc, SchemaVersionProvider schemaVersion, CategoryClassifier classifier,
+                       ConfigService config) {
         this.jdbc = jdbc;
         this.schemaVersion = schemaVersion;
         this.classifier = classifier;
+        this.config = config;
     }
 
     @Transactional(readOnly = true)
     public FeedDtos.FeedResponse feed(String category, String cursorValue, int size) {
-        if (size < 1 || size > 60) {
-            throw ApiException.badRequest("bad_size", "size 必须在 1 到 60 之间");
+        int maxSize = config.intValue("feed.page_size_max", 60);
+        if (size < 1 || size > maxSize) {
+            throw ApiException.badRequest("bad_size", "size 必须在 1 到 " + maxSize + " 之间");
         }
         String cat = normalizeCategory(category);
         String cursorCategory = cat == null ? "" : cat;

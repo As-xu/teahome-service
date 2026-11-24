@@ -22,9 +22,9 @@ public class WebConfig {
     }
 
     @Bean
-    FilterRegistrationBean<RateLimitFilter> rateLimitFilter() {
+    FilterRegistrationBean<RateLimitFilter> rateLimitFilter(ConfigService configService) {
         FilterRegistrationBean<RateLimitFilter> registration =
-                new FilterRegistrationBean<>(new RateLimitFilter());
+                new FilterRegistrationBean<>(new RateLimitFilter(configService));
         registration.addUrlPatterns("/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
         return registration;

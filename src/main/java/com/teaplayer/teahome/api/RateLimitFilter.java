@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.teaplayer.teahome.config.ConfigService;
 import com.teaplayer.teahome.auth.TokenAuthFilter;
 import com.teaplayer.teahome.auth.TokenPrincipal;
 
@@ -21,6 +22,11 @@ import jakarta.servlet.http.HttpServletResponse;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final Map<String, Window> windows = new ConcurrentHashMap<>();
+    private final ConfigService config;
+
+    public RateLimitFilter(ConfigService config) {
+        this.config = config;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -43,15 +49,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
         long periodMs;
         if (path.startsWith("/v1/search")) {
             bucket = "search";
-            limit = 2;
+            limit = config.intValue("api.rate_limit_search_per_sec", 2);
             periodMs = 1_000L;
         } else if (path.startsWith("/v1/img/")) {
             bucket = "img";
-            limit = 120;
+            limit = config.intValue("api.rate_limit_img_per_min", 120);
             periodMs = 60_000L;
         } else {
             bucket = "read";
-            limit = 30;
+            limit = config.intValue("api.rate_limit_read_per_sec", 30);
             periodMs = 1_000L;
         }
         if (windows.size() > 10_000) {

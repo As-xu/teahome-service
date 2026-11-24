@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.teaplayer.teahome.auth.TokenHasher;
+import com.teaplayer.teahome.config.ConfigService;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -45,12 +46,19 @@ public class ItemWriter {
     private final ObjectMapper mapper;
     private final CategoryClassifier classifier;
     private final CrawlProperties props;
+    private final ConfigService config;
 
-    public ItemWriter(JdbcClient jdbc, ObjectMapper mapper, CategoryClassifier classifier, CrawlProperties props) {
+    public ItemWriter(JdbcClient jdbc, ObjectMapper mapper, CategoryClassifier classifier,
+                      CrawlProperties props, ConfigService config) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.classifier = classifier;
         this.props = props;
+        this.config = config;
+    }
+
+    private int ttlDays() {
+        return Math.min(14, Math.max(1, config.intValue("retention.ttl_days", props.getTtlDays())));
     }
 
     /**
@@ -59,7 +67,7 @@ public class ItemWriter {
     @Transactional
     public WriteResult write(SourceRow source, RawItem raw, boolean detailed) {
         Instant now = Instant.now();
-        int ttlDays = Math.min(14, Math.max(1, props.getTtlDays()));
+        int ttlDays = ttlDays();
         Optional<Existing> found = loadExisting(source.id(), raw.id());
         if (!detailed && found.isEmpty()) {
             return new WriteResult(0, null, false, false, false, 0);
@@ -264,7 +272,7 @@ public class ItemWriter {
         if (category.primary() == null) {
             return null;
         }
-        int ttlDays = Math.min(14, Math.max(1, props.getTtlDays()));
+        int ttlDays = ttlDays();
         return jdbc.sql("""
                         INSERT INTO teaplayer_title_group
                             (merge_key, merge_key_version, title, title_norm, year, category_codes,
