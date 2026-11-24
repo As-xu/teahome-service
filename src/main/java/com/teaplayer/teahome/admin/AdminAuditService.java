@@ -51,9 +51,10 @@ public class AdminAuditService {
                 INSERT INTO teaplayer_audit_log
                     (actor_type, actor_id, actor_label, action, target_type, target_id,
                      result, "before", "after", changed_keys, reason, request_id, ip, user_agent, error_code)
-                VALUES ('admin', :actorId, :label, :action, :targetType, :targetId, :result,
+                VALUES ('admin', :actorId, :label, :action, :targetType, CAST(:targetId AS text), :result,
                         CAST(:before AS jsonb), CAST(:after AS jsonb),
-                        CASE WHEN :targetId IS NULL THEN NULL ELSE ARRAY[:targetId]::text[] END,
+                        CASE WHEN CAST(:targetId AS text) IS NULL THEN NULL
+                             ELSE ARRAY[CAST(:targetId AS text)]::text[] END,
                         :reason, :requestId, CAST(:ip AS inet), :ua, :errorCode)
                 """)
                 .param("actorId", "user:" + actor.userId())
