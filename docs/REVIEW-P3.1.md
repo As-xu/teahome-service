@@ -11,7 +11,7 @@
 | P0 安全 | 分号 matrix 路径 `/{v1};x/feed` 绕过 Token 与限流（`%76%31` 只修了一类） | 新增 `config/PathGate`，用 `UrlPathHelper.getPathWithinApplication` 与 MVC 同一套规范化；两个过滤器都改走它；只对 `/v1` 鉴权 | `/v1;x/meta`、`/v1;x/feed`、`/v1;x/img/...` 全部 401 |
 | P0 正确性 | 配置审计 `before` 用字符串拼 JSON，字符串/URL 类配置第二次 PUT 必 500 | 改为 `jsonb_build_object('value', CAST(:before AS jsonb))`；参数始终传合法 JSON（无旧值时传 `null`） | `logging.level` 连续 PUT INFO→DEBUG 均 200，审计行 `{"value":"INFO"} → {"value":"DEBUG"}` |
 | P0 数据 | detail 缺封面/备注/地区时无条件写 NULL，清空已有元数据 | UPDATE 改 `COALESCE(:cover, cover_url)` 等 5 列 | 代码审查 + 单测；详细回归待集成测试 |
-| P0 数据 | 新记录遇到旧 `vod_time` 时 `expires_at=now+5m`，条目 5 分钟后消失，抓取反复插入删除 | `TtlPolicy.expiry` 改为 `max(vod+ttl, now+ttl)`，删除 5 分钟 floor；更新测试 | `TtlPolicyTest` 通过（29→30 个测试） |
+| P0 数据 | 新记录遇到旧 `vod_time` 时 `expires_at=now+5m`，条目 5 分钟后消失，抓取反复插入删除 | `TtlPolicy.expiry` 改为 `max(vod+ttl, now+ttl)`，删除 5 分钟 floor；更新测试 | `TtlPolicyTest` 通过（全量 28 个测试） |
 | P0 安全 | V3 种子把稀饭源 Supabase `apikey/Bearer` 明文写入 Git 与 Flyway | V10 将 `xifan.spec.headers` 置空；schema_version=8；**密钥仍必须由你在源站轮换/吊销** | DB 中 `headers={}`；`/v1/meta` schema 8 |
 | P1 可用性 | api 关闭抓取调度后配置只依赖 LISTEN，漏通知就永久陈旧 | 新增独立 `ConfigPoller` 守护线程（30s，role=migrate 跳过） | api 日志「配置轮询已启动，间隔 30000ms，role=api」；删除行后 30s 内生效 |
 
