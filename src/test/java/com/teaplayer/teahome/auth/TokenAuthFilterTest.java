@@ -16,6 +16,10 @@ class TokenAuthFilterTest {
         assertFalse(filter.shouldNotFilter(request("/v1/feed")));
         assertFalse(filter.shouldNotFilter(request("/%76%31/feed")));
         assertFalse(filter.shouldNotFilter(request("/v1")));
+        assertFalse(filter.shouldNotFilter(request("/v1;x/feed")));
+        assertFalse(filter.shouldNotFilter(request("/v1;a=b/feed")));
+        assertFalse(filter.shouldNotFilter(request("/v1;/feed")));
+        assertFalse(filter.shouldNotFilter(request("/v1/feed;x")));
     }
 
     @Test

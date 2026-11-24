@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.teaplayer.teahome.config.ConfigService;
+import com.teaplayer.teahome.config.PathGate;
 import com.teaplayer.teahome.auth.TokenAuthFilter;
 import com.teaplayer.teahome.auth.TokenPrincipal;
 
@@ -31,16 +32,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String path = request.getRequestURI();
-        if (path == null || path.isEmpty()) {
-            path = request.getServletPath();
-        }
-        try {
-            path = java.net.URLDecoder.decode(path, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ignored) {
-            // 保留原值
-        }
-        if (!(path.equals("/v1") || path.startsWith("/v1/"))) {
+        String path = PathGate.path(request);
+        if (!PathGate.isV1(path)) {
             chain.doFilter(request, response);
             return;
         }

@@ -235,8 +235,13 @@ public class ItemWriter {
                                category_source = :categorySource, classifier_version = :classifierVersion,
                                content_hash = :hash, play_hash = :playHash, vod_time = :vodTime,
                                expires_at = :expiresAt, ttl_days_applied = :ttlDays, status = 'active',
-                               group_id = :groupId, cover_url = :cover, cover_key = :coverKey, remark = :remark,
-                               area = :area, lang = :lang, extra = CAST(:extra AS jsonb),
+                               group_id = :groupId,
+                               cover_url = COALESCE(:cover, cover_url),
+                               cover_key = COALESCE(:coverKey, cover_key),
+                               remark = COALESCE(:remark, remark),
+                               area = COALESCE(:area, area),
+                               lang = COALESCE(:lang, lang),
+                               extra = CAST(:extra AS jsonb),
                                updated_at = CASE WHEN :changed THEN :now ELSE updated_at END
                          WHERE id = :id
                         """)

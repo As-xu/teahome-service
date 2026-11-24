@@ -3,6 +3,8 @@ package com.teaplayer.teahome.auth;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
+
+import com.teaplayer.teahome.config.PathGate;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 
@@ -36,21 +38,8 @@ public class TokenAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // 用解码后的路径判断，避免 /%76%31/... 这类编码绕过。
-        String path = request.getRequestURI();
-        if (path == null || path.isEmpty()) {
-            path = request.getServletPath();
-        }
-        try {
-            path = java.net.URLDecoder.decode(path, StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ignored) {
-            // 保留原始路径，交给后续鉴权/路由处理
-        }
-        String context = request.getContextPath();
-        if (context != null && !context.isEmpty() && path.startsWith(context)) {
-            path = path.substring(context.length());
-        }
-        return !(path.equals("/v1") || path.startsWith("/v1/"));
+        // 与 MVC 同一套规范化：/v1;x/... 与 /%76%31/... 都必须被鉴权。
+        return !PathGate.isV1(PathGate.path(request));
     }
 
     @Override
