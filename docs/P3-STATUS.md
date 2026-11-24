@@ -94,4 +94,11 @@ curl -X PUT -H "X-TeaHome-Token: $TOKEN" -H 'Content-Type: application/json' \
   - 测试 token 与测试配置行已删除；`/v1/meta` schema 9，三容器 healthy。
   - `./mvnw -B -q test` 28 个通过。
 
-仍未做（后续）：配置 NOTIFY 使用独立连接以完全避开事务边界、图片缓存 GC、live detail 负缓存/信号量、Testcontainers 集成测试、其余配置键接线。
+仍未做（后续）：配置 NOTIFY 使用独立连接以完全避开事务边界、图片缓存 GC、live detail 负缓存/信号量、Testcontainers 集成测试。
+
+## P3.2 补充接线（2026-11-25，`9ef992a`）
+
+- `crawl.hourly.enabled` / `crawl.daily.enabled`：调度触发（`trigger=scheduler`）时若为 false 直接 `skipped("disabled by config")`；手工 CLI 不受影响。
+- `crawl.request_interval_ms`：`MacCmsClient.pause()` 改为每次读取配置，默认回退 `CrawlProperties`。
+- `search.cache_ttl`：`TtlCache` 支持按条 TTL，搜索缓存按配置时长写入（仍只缓存 `partial=false` 的结果）。
+- 部署后 `/health` 200（schema 9），`last_good=9ef992a`，搜索 200（2.4s）；`./mvnw -B -q test` 28 个通过。
