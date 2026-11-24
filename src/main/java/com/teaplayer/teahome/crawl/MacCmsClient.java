@@ -38,11 +38,14 @@ public class MacCmsClient {
 
     private final ObjectMapper mapper;
     private final CrawlProperties props;
+    private final com.teaplayer.teahome.config.ConfigService config;
     private final HttpClient http;
 
-    public MacCmsClient(ObjectMapper mapper, CrawlProperties props) {
+    public MacCmsClient(ObjectMapper mapper, CrawlProperties props,
+                        com.teaplayer.teahome.config.ConfigService config) {
         this.mapper = mapper;
         this.props = props;
+        this.config = config;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -221,7 +224,8 @@ public class MacCmsClient {
     }
 
     private void pause() {
-        sleep(props.getRequestIntervalMs());
+        int configured = config.intValue("crawl.request_interval_ms", props.getRequestIntervalMs());
+        sleep(Math.max(0, configured));
     }
 
     private static void sleep(long millis) {

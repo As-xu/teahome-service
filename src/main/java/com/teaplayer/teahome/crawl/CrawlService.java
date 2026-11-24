@@ -68,6 +68,10 @@ public class CrawlService {
         if (!props.isEnabled() && !"manual".equals(trigger)) {
             return RunOutcome.skipped("disabled");
         }
+        if ("scheduler".equals(trigger) && ("hourly".equals(kind) || "daily".equals(kind))
+                && !config.boolValue("crawl." + kind + ".enabled", true)) {
+            return RunOutcome.skipped("disabled by config");
+        }
         return withLock("crawl", () -> doRun(kind, trigger));
     }
 

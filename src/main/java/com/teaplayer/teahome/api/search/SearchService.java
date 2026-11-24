@@ -172,7 +172,9 @@ public class SearchService {
         SearchDtos.SearchResponse response = new SearchDtos.SearchResponse(q, cat, items,
                 !failed.isEmpty(), failed, OffsetDateTime.now(ZONE).toString());
         if (failed.isEmpty()) {
-            cache.put(cacheKey, response);
+            long ttl = Math.max(1_000L, config.duration("search.cache_ttl",
+                    java.time.Duration.ofMinutes(10)).toMillis());
+            cache.put(cacheKey, response, ttl);
         }
         return response;
     }
