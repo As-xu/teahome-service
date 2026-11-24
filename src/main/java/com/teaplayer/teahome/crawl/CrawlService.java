@@ -24,6 +24,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
+import com.teaplayer.teahome.config.ConfigService;
+
 /** 一轮抓取的编排：建 run/task、翻页、批量详情、逐条入库、汇总状态。 */
 @Service
 public class CrawlService {
@@ -47,9 +49,11 @@ public class CrawlService {
     private final ItemWriter writer;
     private final CategoryClassifier classifier;
     private final CrawlProperties props;
+    private final ConfigService config;
 
     public CrawlService(JdbcClient jdbc, DataSource dataSource, SourceRepository sources, MacCmsClient client,
-                        ItemWriter writer, CategoryClassifier classifier, CrawlProperties props) {
+                        ItemWriter writer, CategoryClassifier classifier, CrawlProperties props,
+                        ConfigService config) {
         this.jdbc = jdbc;
         this.dataSource = dataSource;
         this.sources = sources;
@@ -57,6 +61,7 @@ public class CrawlService {
         this.writer = writer;
         this.classifier = classifier;
         this.props = props;
+        this.config = config;
     }
 
     public RunOutcome run(String kind, String trigger) {
@@ -78,8 +83,8 @@ public class CrawlService {
         recoverStaleRuns();
         Instant now = Instant.now();
         int windowHours = switch (kind) {
-            case "daily" -> props.getDailyWindowHours();
-            default -> props.getHourlyWindowHours();
+            case "daily" -> config.intValue("crawl.daily.window_hours", props.getDailyWindowHours());
+            default -> config.intValue("crawl.hourly.window_hours", props.getHourlyWindowHours());
         };
         Instant windowFrom = now.minus(Duration.ofHours(windowHours));
         String dedupeKey = scheduledDedupe(kind, trigger, now);
@@ -159,7 +164,8 @@ public class CrawlService {
         Instant now = Instant.now();
         String dedupeKey = "scheduler".equals(trigger)
                 ? "retention:" + now.truncatedTo(ChronoUnit.HOURS) : null;
-        Optional<Long> runId = insertRun("retention", now.minus(Duration.ofDays(props.getTtlDays())),
+        Optional<Long> runId = insertRun("retention",
+                now.minus(Duration.ofDays(config.intValue("retention.ttl_days", props.getTtlDays()))),
                 now, trigger, dedupeKey);
         if (runId.isEmpty()) {
             return RunOutcome.skipped("dedupe retention");
@@ -302,7 +308,7 @@ public class CrawlService {
         Map<String, RawItem> out = new HashMap<>();
         List<String> all = new ArrayList<>(ids);
         int missing = 0;
-        int batch = Math.max(1, props.getDetailBatchSize());
+        int batch = Math.max(1, config.intValue("crawl.detail_batch_size", props.getDetailBatchSize()));
         for (int from = 0; from < all.size(); from += batch) {
             List<String> slice = all.subList(from, Math.min(all.size(), from + batch));
             try {

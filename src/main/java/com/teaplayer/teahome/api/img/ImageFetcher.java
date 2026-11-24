@@ -15,12 +15,20 @@ import java.util.Locale;
 
 import org.springframework.stereotype.Component;
 
+import com.teaplayer.teahome.config.ConfigService;
+
 /** 只抓取公网图片：禁止重定向、私网/环回地址、SVG，限制 5 MiB 与 10 秒。 */
 @Component
 public class ImageFetcher {
 
     private static final int MAX_BYTES = 5 * 1024 * 1024;
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
+
+    private final ConfigService config;
+
+    public ImageFetcher(ConfigService config) {
+        this.config = config;
+    }
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -62,8 +70,10 @@ public class ImageFetcher {
                 if (!contentType.startsWith("image/")) {
                     throw new IllegalStateException("图片源 content-type 不是图片");
                 }
-                byte[] bytes = in.readNBytes(MAX_BYTES + 1);
-                if (bytes.length == 0 || bytes.length > MAX_BYTES) {
+                int maxBytes = (int) Math.max(64L * 1024,
+                        Math.min(config.longValue("image.max_bytes", MAX_BYTES), 16L * 1024 * 1024));
+                byte[] bytes = in.readNBytes(maxBytes + 1);
+                if (bytes.length == 0 || bytes.length > maxBytes) {
                     throw new IllegalStateException("图片过大或为空");
                 }
                 String actual = sniff(bytes);

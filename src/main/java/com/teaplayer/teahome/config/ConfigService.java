@@ -299,6 +299,27 @@ public class ConfigService {
         return normalize(row, value);
     }
 
+    /**
+     * Validate a candidate value against the current snapshot, including cross-key rules,
+     * before it is written to the database. A value that would fail {@link #reload()} is
+     * rejected here instead of silently leaving the database ahead of the live snapshot.
+     */
+    public String validateChange(String key, String value) {
+        Entry entry = snapshot.entries().get(key);
+        if (entry == null) {
+            throw new IllegalArgumentException("unknown config key: " + key);
+        }
+        if (entry.secret()) {
+            return value;
+        }
+        String normalized = validate(key, value);
+        Map<String, Entry> candidate = new LinkedHashMap<>(snapshot.entries());
+        candidate.put(key, new Entry(entry.key(), entry.group(), entry.type(), normalized, "db",
+                entry.applyMode(), entry.secret(), entry.sensitive(), entry.description(), entry.version()));
+        checkCrossKeys(candidate);
+        return normalized;
+    }
+
     private String normalize(Row row, String raw) {
         if (raw == null) {
             return null;

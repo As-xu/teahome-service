@@ -3,13 +3,19 @@ package com.teaplayer.teahome.web;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.Optional;
+
+import javax.sql.DataSource;
 
 import com.teaplayer.teahome.auth.ApiTokenService;
 import com.teaplayer.teahome.auth.TokenAuthFilter;
@@ -38,10 +44,22 @@ class MetaControllerTest {
     @MockitoBean
     private SchemaVersionProvider schemaVersionProvider;
 
+    @MockitoBean
+    private DataSource dataSource;
+
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         when(schemaVersionProvider.schemaVersion()).thenReturn("2");
         when(tokenService.authenticate(any(), anyString())).thenReturn(Optional.empty());
+
+        Connection connection = mock(Connection.class);
+        Statement statement = mock(Statement.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.createStatement()).thenReturn(statement);
+        when(statement.executeQuery(anyString())).thenReturn(rs);
+        when(rs.next()).thenReturn(true);
+        when(rs.getString(1)).thenReturn(SchemaVersionProvider.CURRENT_SCHEMA_VERSION);
     }
 
     @Test

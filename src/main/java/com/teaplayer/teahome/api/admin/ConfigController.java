@@ -13,6 +13,8 @@ import java.util.Map;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -93,7 +95,7 @@ public class ConfigController {
             sealed = secretBox.seal(key, request.value());
         } else {
             try {
-                normalized = config.validate(key, request.value());
+                normalized = config.validateChange(key, request.value());
             } catch (RuntimeException e) {
                 throw ApiException.badRequest("bad_value", e.getMessage());
             }
@@ -182,13 +184,23 @@ public class ConfigController {
                 .param("requestId", requestId)
                 .update();
 
-        config.notifyChange(key);
-        config.reload();
-        ConfigService.Entry updated = config.entries().get(key);
-        return new EntryView(updated.key(), updated.group(), updated.type(),
-                updated.secret() || updated.sensitive() ? "******" : redact(updated.value()),
-                updated.source(), updated.applyMode(), updated.secret(), updated.sensitive(),
-                updated.description(), updated.version());
+        Runnable refresh = () -> {
+            config.reload();
+            config.notifyChange(key);
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    refresh.run();
+                }
+            });
+        } else {
+            refresh.run();
+        }
+        String shown = current.secret() || current.sensitive() ? "******" : redact(normalized);
+        return new EntryView(current.key(), current.group(), current.type(), shown, "db",
+                current.applyMode(), current.secret(), current.sensitive(), current.description(), nextVersion);
     }
 
     private static void requireRead(TokenPrincipal principal) {

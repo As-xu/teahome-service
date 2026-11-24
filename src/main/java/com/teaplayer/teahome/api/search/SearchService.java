@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import com.teaplayer.teahome.api.ApiException;
 import com.teaplayer.teahome.api.TtlCache;
+import com.teaplayer.teahome.config.ConfigService;
 import com.teaplayer.teahome.crawl.CategoryClassifier;
 import com.teaplayer.teahome.crawl.MacCmsClient;
 import com.teaplayer.teahome.crawl.RawItem;
@@ -44,6 +45,7 @@ public class SearchService {
     private final SourceRepository sources;
     private final MacCmsClient client;
     private final CategoryClassifier classifier;
+    private final ConfigService config;
     private final ExecutorService pool = new ThreadPoolExecutor(6, 6, 0L, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(12), r -> {
                 Thread thread = new Thread(r, "search");
@@ -52,10 +54,12 @@ public class SearchService {
             }, new ThreadPoolExecutor.AbortPolicy());
     private final TtlCache<String, SearchDtos.SearchResponse> cache = new TtlCache<>(600_000L, 200);
 
-    public SearchService(SourceRepository sources, MacCmsClient client, CategoryClassifier classifier) {
+    public SearchService(SourceRepository sources, MacCmsClient client, CategoryClassifier classifier,
+                         ConfigService config) {
         this.sources = sources;
         this.client = client;
         this.classifier = classifier;
+        this.config = config;
     }
 
     public SearchDtos.SearchResponse search(String query, String category) {
@@ -77,11 +81,13 @@ public class SearchService {
         List<SourceRow> enabled = sources.enabledSources().stream()
                 .filter(SourceRow::isMacCms)
                 .toList();
+        java.time.Duration perSource = config.duration("search.timeout_per_source",
+                java.time.Duration.ofMillis(3500));
         List<Callable<SourceResult>> tasks = new ArrayList<>(enabled.size());
         for (SourceRow source : enabled) {
             tasks.add(() -> {
                 try {
-                    List<RawItem> items = client.search(source, source.parsedSpec(), q);
+                    List<RawItem> items = client.search(source, source.parsedSpec(), q, perSource);
                     return new SourceResult(source.id(), items, null);
                 } catch (RuntimeException e) {
                     log.debug("搜索源失败 source={} reason={}", source.id(), e.getMessage());
@@ -93,7 +99,8 @@ public class SearchService {
         List<SearchDtos.Failed> failed = new ArrayList<>();
         Map<String, MutableItem> merged = new LinkedHashMap<>();
         List<Future<SourceResult>> futures = new ArrayList<>(tasks.size());
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        java.time.Duration deadlineDuration = config.duration("search.deadline", java.time.Duration.ofSeconds(5));
+        long deadline = System.nanoTime() + deadlineDuration.toNanos();
         for (int i = 0; i < tasks.size(); i++) {
             try {
                 futures.add(pool.submit(tasks.get(i)));
