@@ -17,10 +17,10 @@
 
 ## 未修复，按优先级进入 P3.2
 
-1. **审计与配置表完整性**：`teahome_app` 仍有 `audit_log/config_revision` 的 UPDATE/DELETE；触发器允许应用自己 `SET teahome.audit_purge='on'` 后删除。需收回权限 + 改触发器校验 `current_user`。
+1. ~~**审计与配置表完整性**~~（P3.2 已修：V11 收权 + 触发器按 current_user 判定）：`teahome_app` 仍有 `audit_log/config_revision` 的 UPDATE/DELETE；触发器允许应用自己 `SET teahome.audit_purge='on'` 后删除。需收回权限 + 改触发器校验 `current_user`。
 2. **图片 SSRF DNS rebinding**：`ImageFetcher` 先校验域名再按域名连接，第二次解析可指向内网；需一次解析后按 IP 连接（自定义 Dns/HTTP 客户端）。
-3. **401 退避按 IP**：NAT/反代后共享桶，可被用来打同网段其他客户端；应按 token 前缀/组合键并改进清空策略。
-4. **purge 单事务**：一次 retention 把所有批次包在一个事务，`statement_timeout=120s` 下大批量会整段回滚；需每批独立事务（REQUIRES_NEW/TransactionTemplate）。
+3. ~~**401 退避按 IP**~~（P3.2 已改为 token/IP 双桶）：NAT/反代后共享桶，可被用来打同网段其他客户端；应按 token 前缀/组合键并改进清空策略。
+4. ~~**purge 单事务**~~（P3.2 已改为每批独立事务）：一次 retention 把所有批次包在一个事务，`statement_timeout=120s` 下大批量会整段回滚；需每批独立事务（REQUIRES_NEW/TransactionTemplate）。
 5. **配置写路径**：跨键约束只在 reload 时检查（单键合法但整表冻结）；`notify/reload` 在提交前执行；并发 PUT 的 revision 号仍需 DB CAS/序列。
 6. **22 个配置键只接了 6 个**：`crawl.*`、`search.deadline`、`image.max_bytes`、`image.cache_max_bytes` 等仍是硬编码，故障时无法用它止血。
 7. **图片缓存无 GC**：`image.cache_max_bytes/cache_ttl_days` 未执行，`/data/images` 可无限增长；`hit_count/last_hit_at` 未写。

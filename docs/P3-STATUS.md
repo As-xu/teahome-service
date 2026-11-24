@@ -66,3 +66,15 @@ curl -X PUT -H "X-TeaHome-Token: $TOKEN" -H 'Content-Type: application/json' \
 ```
 
 重启 api/crawler 会重新加载快照；crawler 常驻，30 秒内自动看到其他实例的修改。
+
+## P3.2 验收记录（审计不可变 / 退避 / 清理分片）
+
+- `V11__audit_hardening.sql`：`teahome_app` 对 `teaplayer_audit_log`、`teaplayer_config_revision` 只保留 `SELECT/INSERT`；审计触发器 DELETE 仅 `teahome_migrate/postgres` 放行，UPDATE 永远拒绝；`config_revision` 增加 UPDATE/DELETE 全拒触发器；`schema_version='9'`。
+- 线上验证：`SET ROLE teahome_app; DELETE FROM teaplayer_audit_log` → `ERROR: permission denied for table teaplayer_audit_log`；对 `teaplayer_config_revision` UPDATE 同样被拒。
+- 401 退避改为双桶：同一 token 60 秒 30 次、同一 IP 120 次；实测同一坏 token 连续请求 `30×401 + 1×429`。成功只清 token 桶，NAT 后不会因一个客户端拖累整个 IP。
+- `RateLimitFilter` 超 1 万窗口时改为清理 5 分钟未用项，不再整体 `clear()`。
+- `ItemWriter.purgeExpired` 改为每批 500（读 `retention.cleanup_batch_size`）独立 `TransactionTemplate` 提交，批间 20ms；线上注入一条过期条目，retention run=55 `deleted=1`、51ms，条目与分组计数正确。
+- 路径绕过回归：`/v1;x/feed`、`/%76%31/feed` 均 401；`/health` 200。
+- schema 9；api/crawler/db 三容器 healthy。
+
+仍未做（P3.2 候选）：图片 DNS pin、配置 PUT 前跨键校验/提交后 notify、22 键接线、图片 GC、live detail 并发/负缓存、health 查 DB、Testcontainers。
