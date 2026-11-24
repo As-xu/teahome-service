@@ -34,13 +34,15 @@ public class ConfigService {
 
     private final JdbcClient jdbc;
     private final Environment environment;
+    private final SecretBox secretBox;
     private final AtomicLong generation = new AtomicLong();
 
     private volatile Snapshot snapshot = new Snapshot(Map.of(), Map.of(), 0, Instant.EPOCH);
 
-    public ConfigService(JdbcClient jdbc, Environment environment) {
+    public ConfigService(JdbcClient jdbc, Environment environment, SecretBox secretBox) {
         this.jdbc = jdbc;
         this.environment = environment;
+        this.secretBox = secretBox;
     }
 
     public record Entry(String key, String group, String type, String value, String source,
@@ -53,7 +55,7 @@ public class ConfigService {
 
     private record Row(String key, String group, String type, String defaultValue, String constraints,
                        String applyMode, boolean secret, boolean sensitive, String description,
-                       String dbValue, long version) {
+                       String dbValue, byte[] cipher, byte[] nonce, String keyId, long version) {
     }
 
     @PostConstruct
@@ -74,6 +76,7 @@ public class ConfigService {
                            d.constraints::text AS constraints,
                            d.apply_mode, d.is_secret, d.is_sensitive, d.description,
                            v.value_json::text AS db_value,
+                           v.value_cipher, v.value_nonce, v.key_id,
                            COALESCE(v.version, 0) AS version
                       FROM teaplayer_config_def d
                       LEFT JOIN teaplayer_config_value v ON v.config_key = d.config_key
@@ -90,6 +93,9 @@ public class ConfigService {
                     rs.getBoolean("is_sensitive"),
                     rs.getString("description"),
                     rs.getString("db_value"),
+                    rs.getBytes("value_cipher"),
+                    rs.getBytes("value_nonce"),
+                    rs.getString("key_id"),
                     rs.getLong("version"))).list();
 
             Map<String, Entry> next = new LinkedHashMap<>();
@@ -100,6 +106,9 @@ public class ConfigService {
                 if (envValue != null && !envValue.isBlank()) {
                     raw = envValue;
                     source = "env";
+                } else if (row.secret() && row.cipher() != null) {
+                    raw = secretBox.open(row.key(), row.keyId(), row.nonce(), row.cipher());
+                    source = "db";
                 } else if (row.dbValue() != null) {
                     raw = row.dbValue();
                     source = "db";
@@ -107,7 +116,7 @@ public class ConfigService {
                     raw = row.defaultValue();
                     source = "default";
                 }
-                String normalized = normalize(row, raw);
+                String normalized = "secret".equals(row.type()) ? raw : normalize(row, raw);
                 next.put(row.key(), new Entry(row.key(), row.group(), row.type(), normalized, source,
                         row.applyMode(), row.secret(), row.sensitive(), row.description(), row.version()));
             }
@@ -115,10 +124,94 @@ public class ConfigService {
             for (Row row : rows) {
                 defs.put(row.key(), row);
             }
+            checkDrift(defs, next);
+            checkCrossKeys(next);
             snapshot = new Snapshot(Map.copyOf(next), Map.copyOf(defs), generation.incrementAndGet(), Instant.now());
             log.info("配置快照已加载：{} 项 generation={}", next.size(), snapshot.generation());
         } catch (RuntimeException e) {
             log.error("配置加载失败，继续使用上一版快照 generation={}", snapshot.generation(), e);
+        }
+    }
+
+    private static void checkDrift(Map<String, Row> defs, Map<String, Entry> entries) {
+        for (Row row : defs.values()) {
+            if (row.description() == null || row.description().isBlank()) {
+                log.warn("配置定义缺少描述：{}", row.key());
+            }
+            if (!entries.containsKey(row.key())) {
+                log.warn("配置定义没有生效值：{}", row.key());
+            }
+        }
+    }
+
+    private void checkCrossKeys(Map<String, Entry> entries) {
+        int feedDefault = intValue(entries, "feed.page_size_default", 24);
+        int feedMax = intValue(entries, "feed.page_size_max", 60);
+        if (feedDefault > feedMax) {
+            throw new IllegalStateException("feed.page_size_default 不能大于 feed.page_size_max");
+        }
+        Duration deadline = duration(entries, "search.deadline", Duration.ofSeconds(5));
+        Duration perSource = duration(entries, "search.timeout_per_source", Duration.ofMillis(3500));
+        if (deadline.compareTo(perSource) < 0) {
+            throw new IllegalStateException("search.deadline 不能小于 search.timeout_per_source");
+        }
+        int ttlDays = intValue(entries, "retention.ttl_days", 8);
+        int hourly = intValue(entries, "crawl.hourly.window_hours", 3);
+        if (hourly > ttlDays * 24) {
+            throw new IllegalStateException("crawl.hourly.window_hours 不能超过 TTL");
+        }
+        long imageMax = longValue(entries, "image.max_bytes", 4L << 20);
+        long cacheMax = longValue(entries, "image.cache_max_bytes", 20L << 30);
+        if (imageMax > cacheMax) {
+            throw new IllegalStateException("image.max_bytes 不能大于 image.cache_max_bytes");
+        }
+    }
+
+    private static int intValue(Map<String, Entry> entries, String key, int fallback) {
+        Entry entry = entries.get(key);
+        if (entry == null) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(unquote(entry.value()));
+        } catch (RuntimeException e) {
+            return fallback;
+        }
+    }
+
+    private static long longValue(Map<String, Entry> entries, String key, long fallback) {
+        Entry entry = entries.get(key);
+        if (entry == null) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(unquote(entry.value()));
+        } catch (RuntimeException e) {
+            return fallback;
+        }
+    }
+
+    private static Duration duration(Map<String, Entry> entries, String key, Duration fallback) {
+        Entry entry = entries.get(key);
+        if (entry == null) {
+            return fallback;
+        }
+        try {
+            String value = unquote(entry.value());
+            return value.startsWith("P") ? Duration.parse(value) : Duration.ofSeconds(Long.parseLong(value));
+        } catch (RuntimeException e) {
+            return fallback;
+        }
+    }
+
+    public void notifyChange(String key) {
+        try {
+            jdbc.sql("SELECT pg_notify('teahome_config', :payload)")
+                    .param("payload", key)
+                    .query(String.class)
+                    .optional();
+        } catch (RuntimeException e) {
+            log.warn("pg_notify 失败：{}", e.toString());
         }
     }
 

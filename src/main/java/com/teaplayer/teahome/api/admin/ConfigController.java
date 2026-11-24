@@ -4,6 +4,7 @@ import com.teaplayer.teahome.api.ApiException;
 import com.teaplayer.teahome.auth.TokenAuthFilter;
 import com.teaplayer.teahome.auth.TokenPrincipal;
 import com.teaplayer.teahome.config.ConfigService;
+import com.teaplayer.teahome.config.SecretBox;
 
 import java.time.Instant;
 import java.util.Comparator;
@@ -26,10 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConfigController {
 
     private final ConfigService config;
+    private final SecretBox secretBox;
     private final JdbcClient jdbc;
 
-    public ConfigController(ConfigService config, JdbcClient jdbc) {
+    public ConfigController(ConfigService config, SecretBox secretBox, JdbcClient jdbc) {
         this.config = config;
+        this.secretBox = secretBox;
         this.jdbc = jdbc;
     }
 
@@ -77,33 +80,65 @@ public class ConfigController {
         if ("env".equals(current.source())) {
             throw ApiException.conflict("config is managed by environment");
         }
-        if (current.secret()) {
-            throw ApiException.badRequest("secret_not_supported", "secret updates are not enabled in P3");
-        }
         if (request.expectedVersion() != null && request.expectedVersion() != current.version()) {
             throw ApiException.conflict("config version changed");
         }
         String normalized;
-        try {
-            normalized = config.validate(key, request.value());
-        } catch (RuntimeException e) {
-            throw ApiException.badRequest("bad_value", e.getMessage());
+        SecretBox.Sealed sealed = null;
+        if (current.secret()) {
+            if (!secretBox.configured()) {
+                throw ApiException.badRequest("secret_keyring_missing", "TEAHOME_CONFIG_KEYS is not configured");
+            }
+            normalized = null;
+            sealed = secretBox.seal(key, request.value());
+        } else {
+            try {
+                normalized = config.validate(key, request.value());
+            } catch (RuntimeException e) {
+                throw ApiException.badRequest("bad_value", e.getMessage());
+            }
         }
         long nextVersion = current.version() + 1;
-        jdbc.sql("""
-                INSERT INTO teaplayer_config_value (config_key, value_json, version, updated_by, updated_at)
-                VALUES (:key, CAST(:value AS jsonb), :version, :actor, now())
-                ON CONFLICT (config_key) DO UPDATE
-                   SET value_json = EXCLUDED.value_json,
-                       version = EXCLUDED.version,
-                       updated_by = EXCLUDED.updated_by,
-                       updated_at = now()
-                """)
-                .param("key", key)
-                .param("value", normalized)
-                .param("version", nextVersion)
-                .param("actor", principal.label())
-                .update();
+        if (sealed != null) {
+            jdbc.sql("""
+                    INSERT INTO teaplayer_config_value
+                        (config_key, value_json, value_cipher, value_nonce, key_id, value_hint,
+                         version, updated_by, updated_at)
+                    VALUES (:key, NULL, :cipher, :nonce, :keyId, :hint, :version, :actor, now())
+                    ON CONFLICT (config_key) DO UPDATE
+                       SET value_json = NULL,
+                           value_cipher = EXCLUDED.value_cipher,
+                           value_nonce = EXCLUDED.value_nonce,
+                           key_id = EXCLUDED.key_id,
+                           value_hint = EXCLUDED.value_hint,
+                           version = EXCLUDED.version,
+                           updated_by = EXCLUDED.updated_by,
+                           updated_at = now()
+                    """)
+                    .param("key", key)
+                    .param("cipher", sealed.cipher())
+                    .param("nonce", sealed.nonce())
+                    .param("keyId", sealed.keyId())
+                    .param("hint", sealed.hint())
+                    .param("version", nextVersion)
+                    .param("actor", principal.label())
+                    .update();
+        } else {
+            jdbc.sql("""
+                    INSERT INTO teaplayer_config_value (config_key, value_json, version, updated_by, updated_at)
+                    VALUES (:key, CAST(:value AS jsonb), :version, :actor, now())
+                    ON CONFLICT (config_key) DO UPDATE
+                       SET value_json = EXCLUDED.value_json,
+                           version = EXCLUDED.version,
+                           updated_by = EXCLUDED.updated_by,
+                           updated_at = now()
+                    """)
+                    .param("key", key)
+                    .param("value", normalized)
+                    .param("version", nextVersion)
+                    .param("actor", principal.label())
+                    .update();
+        }
 
         jdbc.sql("""
                 INSERT INTO teaplayer_config_revision
@@ -115,7 +150,7 @@ public class ConfigController {
                 .param("key", key)
                 .param("revision", nextVersion)
                 .param("kind", current.source().equals("db") ? "update" : "create")
-                .param("oldValue", current.source().equals("db") ? current.value() : null)
+                .param("oldValue", !current.secret() && current.source().equals("db") ? current.value() : null)
                 .param("newValue", normalized)
                 .param("reason", request.reason())
                 .param("actorId", "token:" + principal.id())
@@ -133,12 +168,14 @@ public class ConfigController {
                 .param("actorId", "token:" + principal.id())
                 .param("actorLabel", principal.label())
                 .param("key", key)
-                .param("before", current.source().equals("db") ? "{\"value\":" + current.value() + "}" : null)
-                .param("after", "{\"value\":" + normalized + "}")
+                .param("before", current.source().equals("db")
+                        ? "{\"value\":\"" + (current.secret() ? "******" : current.value()) + "\"}" : null)
+                .param("after", current.secret() ? "{\"value\":\"******\"}" : "{\"value\":" + normalized + "}")
                 .param("reason", request.reason())
                 .param("requestId", requestId)
                 .update();
 
+        config.notifyChange(key);
         config.reload();
         ConfigService.Entry updated = config.entries().get(key);
         return new EntryView(updated.key(), updated.group(), updated.type(),

@@ -44,7 +44,9 @@ VALUES
     ('system.public_base_url', 'system', 'url', '"http://192.168.5.156:18080"'::jsonb, '{}'::jsonb,
      'runtime', 'hot', false, false, false, '对外基础 URL', 'system', 200),
     ('logging.level', 'logging', 'string', '"INFO"'::jsonb, '{}'::jsonb,
-     'runtime', 'hot', false, false, false, '日志级别', 'system', 210)
+     'runtime', 'hot', false, false, false, '日志级别', 'system', 210),
+    ('system.webhook_secret', 'system', 'secret', '""'::jsonb, '{}'::jsonb,
+     'runtime', 'restart', true, true, false, '告警 webhook 密钥（加密存储）', 'system', 220)
 ON CONFLICT (config_key) DO UPDATE SET
     group_name = EXCLUDED.group_name,
     value_type = EXCLUDED.value_type,
