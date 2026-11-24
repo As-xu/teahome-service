@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.teaplayer.teahome.auth.TokenHasher;
 import com.teaplayer.teahome.config.ConfigService;
@@ -47,14 +48,16 @@ public class ItemWriter {
     private final CategoryClassifier classifier;
     private final CrawlProperties props;
     private final ConfigService config;
+    private final TransactionTemplate tx;
 
     public ItemWriter(JdbcClient jdbc, ObjectMapper mapper, CategoryClassifier classifier,
-                      CrawlProperties props, ConfigService config) {
+                      CrawlProperties props, ConfigService config, TransactionTemplate tx) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.classifier = classifier;
         this.props = props;
         this.config = config;
+        this.tx = tx;
     }
 
     private int ttlDays() {
@@ -489,45 +492,59 @@ public class ItemWriter {
                 .update();
     }
 
-    /** 分批删除过期条目并重算受影响的 group；返回删除条数。group 永不删除。 */
-    @Transactional
+    /** 分批删除过期条目并重算受影响的 group；每批独立事务，避免单事务撞 statement_timeout。 */
     public int purgeExpired(Instant now) {
+        int batchSize = Math.max(50, Math.min(5000,
+                config.intValue("retention.cleanup_batch_size", PURGE_BATCH)));
         int deletedTotal = 0;
         while (true) {
-            List<Expired> batch = jdbc.sql("""
-                            SELECT id, group_id
-                              FROM teaplayer_source_item
-                             WHERE expires_at < :now
-                             ORDER BY id
-                             LIMIT :limit
-                             FOR UPDATE SKIP LOCKED
-                            """)
-                    .param("now", ts(now))
-                    .param("limit", PURGE_BATCH)
-                    .query((rs, rowNum) -> new Expired(
-                            rs.getLong("id"),
-                            rs.getObject("group_id") == null ? null : rs.getLong("group_id")))
-                    .list();
-            if (batch.isEmpty()) {
+            Integer deleted = tx.execute(status -> purgeBatch(now, batchSize));
+            if (deleted == null || deleted == 0) {
                 break;
             }
-            List<Long> ids = batch.stream().map(Expired::id).toList();
-            Set<Long> groups = new LinkedHashSet<>();
-            batch.forEach(row -> {
-                if (row.groupId() != null) {
-                    groups.add(row.groupId());
-                }
-            });
-            deletedTotal += jdbc.sql("DELETE FROM teaplayer_source_item WHERE id IN (:ids)")
-                    .param("ids", ids)
-                    .update();
-            groups.stream().sorted().forEach(id -> rebuildGroup(id, false));
-            if (batch.size() < PURGE_BATCH) {
+            deletedTotal += deleted;
+            log.info("过期清理批 items={} total={}", deleted, deletedTotal);
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 break;
             }
         }
         log.info("过期清理 items={}", deletedTotal);
         return deletedTotal;
+    }
+
+    private int purgeBatch(Instant now, int limit) {
+        List<Expired> batch = jdbc.sql("""
+                        SELECT id, group_id
+                          FROM teaplayer_source_item
+                         WHERE expires_at < :now
+                         ORDER BY id
+                         LIMIT :limit
+                         FOR UPDATE SKIP LOCKED
+                        """)
+                .param("now", ts(now))
+                .param("limit", limit)
+                .query((rs, rowNum) -> new Expired(
+                        rs.getLong("id"),
+                        rs.getObject("group_id") == null ? null : rs.getLong("group_id")))
+                .list();
+        if (batch.isEmpty()) {
+            return 0;
+        }
+        List<Long> ids = batch.stream().map(Expired::id).toList();
+        Set<Long> groups = new LinkedHashSet<>();
+        batch.forEach(row -> {
+            if (row.groupId() != null) {
+                groups.add(row.groupId());
+            }
+        });
+        int deleted = jdbc.sql("DELETE FROM teaplayer_source_item WHERE id IN (:ids)")
+                .param("ids", ids)
+                .update();
+        groups.stream().sorted().forEach(id -> rebuildGroup(id, false));
+        return deleted;
     }
 
     /** 元数据 hash：不含 vod_time，避免“重挂时间”导致线路重写。 */

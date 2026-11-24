@@ -54,7 +54,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
             periodMs = 1_000L;
         }
         if (windows.size() > 10_000) {
-            windows.clear();
+            long cutoff = System.currentTimeMillis() - 300_000L;
+            windows.entrySet().removeIf(e -> e.getValue().lastUsed < cutoff);
         }
         String who = key(request) + ":" + bucket;
         Window window = windows.computeIfAbsent(who, k -> new Window());
@@ -90,9 +91,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final class Window {
         private final Deque<Long> hits = new ArrayDeque<>();
+        private volatile long lastUsed = System.currentTimeMillis();
 
         synchronized boolean allow(int limit, long periodMs) {
             long now = System.currentTimeMillis();
+            lastUsed = now;
             while (!hits.isEmpty() && now - hits.peekFirst() > periodMs) {
                 hits.pollFirst();
             }

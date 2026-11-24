@@ -26,11 +26,13 @@ public class TokenAuthFilter extends OncePerRequestFilter {
     public static final String ATTRIBUTE = "teahome.token";
     private static final String TOKEN_HEADER = "X-TeaHome-Token";
 
-    private static final int MAX_FAILURES = 30;
+    private static final int MAX_FAILURES_PER_TOKEN = 30;
+    private static final int MAX_FAILURES_PER_IP = 120;
     private static final long WINDOW_MS = 60_000L;
 
     private final ApiTokenService tokenService;
-    private final Map<String, long[]> failures = new ConcurrentHashMap<>();
+    private final Map<String, long[]> tokenFailures = new ConcurrentHashMap<>();
+    private final Map<String, long[]> ipFailures = new ConcurrentHashMap<>();
 
     public TokenAuthFilter(ApiTokenService tokenService) {
         this.tokenService = tokenService;
@@ -50,7 +52,7 @@ public class TokenAuthFilter extends OncePerRequestFilter {
         if (principal.isEmpty()) {
             Object requestId = request.getAttribute("teahome.requestId");
             String ip = request.getRemoteAddr();
-            if (!allowFailure(ip)) {
+            if (!allowFailure(ip, rawToken)) {
                 response.setStatus(429);
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -73,27 +75,50 @@ public class TokenAuthFilter extends OncePerRequestFilter {
                     java.time.OffsetDateTime.now(java.time.ZoneId.of("Asia/Shanghai"))));
             return;
         }
-        failures.remove(request.getRemoteAddr());
+        if (rawToken != null && !rawToken.isBlank()) {
+            tokenFailures.remove(fingerprint(rawToken));
+        }
         request.setAttribute(ATTRIBUTE, principal.get());
         filterChain.doFilter(request, response);
     }
 
-    private boolean allowFailure(String ip) {
-        if (ip == null || ip.isBlank()) {
-            return true;
-        }
-        if (failures.size() > 10_000) {
-            failures.clear();
-        }
+    private boolean allowFailure(String ip, String rawToken) {
         long now = System.currentTimeMillis();
-        long[] state = failures.computeIfAbsent(ip, k -> new long[]{0L, now});
+        boolean tokenAllowed = true;
+        if (rawToken != null && !rawToken.isBlank()) {
+            tokenAllowed = hit(tokenFailures, fingerprint(rawToken), MAX_FAILURES_PER_TOKEN, now);
+        }
+        boolean ipAllowed = ip == null || ip.isBlank()
+                || hit(ipFailures, ip, MAX_FAILURES_PER_IP, now);
+        return tokenAllowed && ipAllowed;
+    }
+
+    private static boolean hit(Map<String, long[]> map, String key, int max, long now) {
+        if (map.size() > 10_000) {
+            map.entrySet().removeIf(e -> now - e.getValue()[1] > WINDOW_MS);
+        }
+        long[] state = map.computeIfAbsent(key, k -> new long[]{0L, now});
         synchronized (state) {
             if (now - state[1] > WINDOW_MS) {
                 state[0] = 0L;
                 state[1] = now;
             }
             state[0]++;
-            return state[0] <= MAX_FAILURES;
+            return state[0] <= max;
+        }
+    }
+
+    private static String fingerprint(String rawToken) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(rawToken.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(16);
+            for (int i = 0; i < 8; i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(rawToken.hashCode());
         }
     }
 

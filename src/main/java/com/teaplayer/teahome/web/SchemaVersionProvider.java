@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class SchemaVersionProvider {
 
-    static final String CURRENT_SCHEMA_VERSION = "8";
+    static final String CURRENT_SCHEMA_VERSION = "9";
 
     private final JdbcClient jdbc;
 

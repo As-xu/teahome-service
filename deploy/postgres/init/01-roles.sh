@@ -24,6 +24,11 @@ GRANT USAGE ON SCHEMA public TO teahome_app;
 GRANT USAGE, CREATE ON SCHEMA public TO teahome_migrate;
 ALTER DEFAULT PRIVILEGES FOR ROLE teahome_migrate IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO teahome_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE teahome_migrate IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO teahome_app;
+-- 追加式表：应用角色只读+插入，禁止改删（V11 对既有库做同样收紧）。
+REVOKE UPDATE, DELETE ON teaplayer_audit_log FROM teahome_app;
+REVOKE UPDATE, DELETE ON teaplayer_config_revision FROM teahome_app;
+GRANT SELECT, INSERT ON teaplayer_audit_log TO teahome_app;
+GRANT SELECT, INSERT ON teaplayer_config_revision TO teahome_app;
 SQL
 
 if [ -f "$PGDATA/pg_hba.conf" ]; then
