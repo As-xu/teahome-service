@@ -45,7 +45,8 @@ public class AdminCsrfFilter extends OncePerRequestFilter {
             log.warn("admin 拒绝 403（Origin）：method={} path={} origin={} referer={} Host={} remote={}",
                     request.getMethod(), path, request.getHeader("Origin"), request.getHeader("Referer"),
                     request.getHeader("Host"), request.getRemoteAddr());
-            response.sendError(403, "Bad Origin");
+            AdminErrorPages.write(response, 403, "Bad Origin",
+                    "请求的 Origin/Referer 与管理端地址不一致，已拒绝本次写操作。请直接通过 http://127.0.0.1:18081 访问，不要经过反向代理或其他域名。");
             return;
         }
         if (path.equals("/admin/login")) {
@@ -63,7 +64,8 @@ public class AdminCsrfFilter extends OncePerRequestFilter {
                         supplied.getBytes(StandardCharsets.UTF_8))) {
             log.warn("admin 拒绝 403（CSRF）：method={} path={} hasSession={} supplied={}",
                     request.getMethod(), path, session != null, supplied != null);
-            response.sendError(403, "CSRF token missing or invalid");
+            AdminErrorPages.write(response, 403, "CSRF token missing or invalid",
+                    "页面可能已过期或来自其他标签页。返回上一页刷新后重新提交即可；若刚完成提权，请先回到概览页再进入维护页。");
             return;
         }
         chain.doFilter(request, response);
@@ -73,7 +75,10 @@ public class AdminCsrfFilter extends OncePerRequestFilter {
         String origin = request.getHeader("Origin");
         String referer = request.getHeader("Referer");
         if (origin == null && referer == null) {
-            return false;
+            // 同源表单 POST 时浏览器不一定发 Origin，而我们自己的 Referrer-Policy: no-referrer
+            // 会剥掉 Referer，所以两头都缺失是正常的浏览器行为，不是跨站请求：
+            // 会话 cookie 是 SameSite=Strict，非登录路径还要求会话绑定的 CSRF token。
+            return true;
         }
         String candidate = origin != null ? origin : referer;
         if (origin == null && referer != null) {

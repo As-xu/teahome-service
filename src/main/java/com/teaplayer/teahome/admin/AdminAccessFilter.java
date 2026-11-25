@@ -56,13 +56,15 @@ public class AdminAccessFilter extends OncePerRequestFilter {
         String path = PathGate.path(request);
         if (!hostAllowed(request.getHeader("Host"))) {
             log.warn("admin 拒绝 421：Host={} path={} remote={}", request.getHeader("Host"), path, request.getRemoteAddr());
-            response.sendError(421, "Misdirected Request");
+            AdminErrorPages.write(response, 421, "Misdirected Request",
+                    "管理端只接受 Host 为 127.0.0.1 或 localhost 的请求。请用 http://127.0.0.1:18081 访问（若通过 SSH 隧道，请确认隧道把本地 18081 转发到服务器的 127.0.0.1:18081）。");
             return;
         }
         if (!loopbackPeer(request.getRemoteAddr())) {
             log.warn("admin 拒绝 403：来源不是回环 remote={} Host={} path={}",
                     request.getRemoteAddr(), request.getHeader("Host"), path);
-            response.sendError(403, "Forbidden");
+            AdminErrorPages.write(response, 403, "Forbidden",
+                    "管理端只接受来自本机回环的请求。请确认是通过 SSH 隧道从本机 127.0.0.1 访问，而不是从局域网地址直连。");
             return;
         }
 
