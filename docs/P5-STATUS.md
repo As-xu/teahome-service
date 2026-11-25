@@ -12,7 +12,7 @@
 | 审计清理函数 | `SECURITY DEFINER`，owner 为 migrate；仅允许 30–3650 天；app 只能 EXECUTE，不能直接 DELETE | `V13__audit_purge.sql` |
 | live 详情背压 | 全局 4 permit、最多等 2s；超时返回 503；404/忙写入 60s 负缓存 | `api/item/ItemService.java` |
 | 详情 ID 校验 | `sourceId` 仅 `[a-z0-9_-]{1,32}`、`itemId` 仅 1–20 位数字，阻断上游模板注入 | `api/item/ItemService.java` |
-| GC 卷 | crawler 挂载 `/opt/teahome/data/images:/data/images` | `compose.yaml` |
+| GC 卷 | P5.1 起由 admin 挂 `/opt/teahome/images:/data/images` 执行运维任务（原 crawler 挂载目录与 API 不一致，已修正） | `compose.yaml` |
 
 配置键 `logging.audit_retention_days` 由可重复迁移 `R__10_seed_config_defs.sql` 幂等写入，可在管理端配置页热改。
 
@@ -27,14 +27,12 @@
 
 ## 3. 已知缺口
 
-- 图片 SSRF 仍是“解析后校验 + 立即请求”，未做 DNS pin；JDK HttpClient 无法直接 pin IP，需自建 socket 或代理解析器。风险面已由 allow_hosts、禁重定向、私网/环回/CIDR 拒绝、5MiB/10s、端口 80/443 收敛。
-- 容器出站私网阻断（DOCKER-USER egress）未启用：crawler 需要访问宿主 `192.168.5.156:5432`，规则需为“仅放行 DB 端口 + 拒绝其余私网”，需单独演练，避免抓取断连。
-- 封面 GC 未做“立即触发”入口，验证依赖每日 03:20 调度；可后续在管理端加“立即清理”按钮。
-- 无 Testcontainers 集成测试；GC/审计任务只有手工验收。
-- 管理端过期会话清理仍只在登录 issue 时执行（`purgeExpired`），没有独立定时器。
+P5 列出的五项缺口已由 P5.1 收口，见 `docs/P5.1-STATUS.md`：图片 DNS pin、容器出站私网阻断（含演练与回滚物）、管理端“立即清理”入口、过期会话每小时定时清理、抓取/写库集成测试。仍存在的限制：
+
+- 集成测试不依赖 Testcontainers，需要外部可达 PostgreSQL（`TEAHOME_IT_DB_URL` 等），本地无该变量时跳过。
+- 出站阻断只覆盖容器 → 私网方向；公网出站仍全放行（按需再收紧到 80/443 之外的目的端口）。
+- SSH 密码登录保持开启（用户决定，见 `docs/SECURITY-AUDIT.md`）。
 
 ## 4. 后续建议
 
-- P5.1：图片 DNS pin + 出站私网阻断演练（先 dry-run iptables，保留 SSH 回滚）。
-- P5.1：管理端“立即清理封面缓存/审计”操作（sudo + 审计）。
-- P6：Flutter/TV 接入 `TeaHomeSource`。
+- P6：Flutter/TV 接入 `TeaHomeSource`（客户端需放行 192.168/16、cleartext、`/v1/img` 带 Token）。
