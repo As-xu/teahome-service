@@ -2,6 +2,8 @@ server:
   address: ${TEAHOME_ADMIN_BIND:127.0.0.1}
   port: ${TEAHOME_ADMIN_PORT:18081}
   forward-headers-strategy: none
+  error:
+    include-message: always
 
 spring:
   thymeleaf:

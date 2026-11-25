@@ -13,6 +13,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.context.annotation.Profile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -23,6 +25,8 @@ import com.teaplayer.teahome.config.PathGate;
 @Profile("admin")
 @Order(Ordered.HIGHEST_PRECEDENCE + 40)
 public class AdminCsrfFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminCsrfFilter.class);
 
     private static final Set<String> SAFE = Set.of("GET", "HEAD", "OPTIONS");
 
@@ -38,6 +42,9 @@ public class AdminCsrfFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String path = PathGate.path(request);
         if (!originAllowed(request)) {
+            log.warn("admin 拒绝 403（Origin）：method={} path={} origin={} referer={} Host={} remote={}",
+                    request.getMethod(), path, request.getHeader("Origin"), request.getHeader("Referer"),
+                    request.getHeader("Host"), request.getRemoteAddr());
             response.sendError(403, "Bad Origin");
             return;
         }
@@ -54,6 +61,8 @@ public class AdminCsrfFilter extends OncePerRequestFilter {
         if (session == null || expected == null || supplied == null
                 || !MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
                         supplied.getBytes(StandardCharsets.UTF_8))) {
+            log.warn("admin 拒绝 403（CSRF）：method={} path={} hasSession={} supplied={}",
+                    request.getMethod(), path, session != null, supplied != null);
             response.sendError(403, "CSRF token missing or invalid");
             return;
         }

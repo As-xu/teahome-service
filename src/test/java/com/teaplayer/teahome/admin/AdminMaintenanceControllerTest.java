@@ -40,7 +40,7 @@ import com.teaplayer.teahome.ops.AuditRetentionJob;
 @WebMvcTest(AdminMaintenanceController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("admin")
-@Import(AdminModelAdvice.class)
+@Import({AdminModelAdvice.class, AdminErrorAdvice.class})
 class AdminMaintenanceControllerTest {
 
     @Autowired
@@ -142,6 +142,8 @@ class AdminMaintenanceControllerTest {
 
         mockMvc.perform(post("/admin/maintenance/images/gc")
                         .requestAttr(AdminAttributes.SESSION, noSudo))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(view().name("admin/error"))
+                .andExpect(content().string(containsString("sudo required")));
     }
 }

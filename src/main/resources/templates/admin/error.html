@@ -1,0 +1,30 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org" lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>操作未完成 · TeaHomeService</title>
+    <style>
+        body { margin: 0; background: #f6f4ef; color: #23201c;
+               font: 15px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+        main { max-width: 640px; margin: 12vh auto; padding: 32px;
+               background: #fffdf8; border: 1px solid #e6e0d4; border-radius: 12px; }
+        h1 { margin: 0 0 8px; font-size: 22px; }
+        .eyebrow { margin: 0 0 6px; color: #8a8377; letter-spacing: .12em; font-size: 12px; }
+        .muted { color: #6f685d; }
+        .banner { margin: 18px 0; padding: 12px 14px; border-radius: 8px;
+                  background: #fdecea; border: 1px solid #f3c2bd; color: #8c2f26; }
+        a { color: #2f6f4f; }
+    </style>
+</head>
+<body>
+<main>
+    <p class="eyebrow">ADMIN</p>
+    <h1>操作未完成</h1>
+    <p class="muted">请求被拒绝或未能完成，原因见下。</p>
+    <div class="banner"><b th:text="${status} + ' — ' + ${reason}">403 — sudo required</b></div>
+    <p th:text="${hint}">这次操作需要提权。</p>
+    <p class="muted">需要重新登录请回 <a th:href="@{/admin/login}">登录页</a>；查看现状请回 <a th:href="@{/admin}">概览</a>。</p>
+</main>
+</body>
+</html>

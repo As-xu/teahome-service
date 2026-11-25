@@ -13,6 +13,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.context.annotation.Profile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -26,6 +28,8 @@ import com.teaplayer.teahome.config.PathGate;
 @Profile("admin")
 @Order(Ordered.HIGHEST_PRECEDENCE + 30)
 public class AdminAccessFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminAccessFilter.class);
 
     public static final String SID_COOKIE = "ths_sid";
     public static final String CSRF_COOKIE = "ths_csrf";
@@ -51,10 +55,13 @@ public class AdminAccessFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String path = PathGate.path(request);
         if (!hostAllowed(request.getHeader("Host"))) {
+            log.warn("admin 拒绝 421：Host={} path={} remote={}", request.getHeader("Host"), path, request.getRemoteAddr());
             response.sendError(421, "Misdirected Request");
             return;
         }
         if (!loopbackPeer(request.getRemoteAddr())) {
+            log.warn("admin 拒绝 403：来源不是回环 remote={} Host={} path={}",
+                    request.getRemoteAddr(), request.getHeader("Host"), path);
             response.sendError(403, "Forbidden");
             return;
         }
