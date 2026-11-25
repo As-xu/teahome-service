@@ -1,11 +1,15 @@
 package com.teaplayer.teahome.admin;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Controller;
@@ -18,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 @Controller
 @Profile("admin")
 public class AdminLoginController {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminLoginController.class);
 
     private final JdbcClient jdbc;
     private final AdminSessionService sessions;
@@ -74,9 +80,14 @@ public class AdminLoginController {
         boolean ok = user.isPresent() && "active".equals(user.get().status()) && passwordOk;
         if (!ok) {
             throttle.failure(ip);
-            audit.denied(username, "admin.login", "admin_user", username, "bad credentials", request, "bad_credentials");
+            int submittedPoints = password.codePointCount(0, password.length());
+            String digest = digestPrefix(password);
+            log.warn("admin 登录失败 username={} passwordCodePoints={} passwordSha256Prefix={} ip={}",
+                    username, submittedPoints, digest, ip);
+            audit.denied(username, "admin.login", "admin_user", username,
+                    "bad credentials codePoints=" + submittedPoints + " sha256=" + digest, request, "bad_credentials");
             model.addAttribute("userCount", users);
-            model.addAttribute("error", "用户名或密码错误");
+            model.addAttribute("error", "用户名或密码错误（本次提交 " + submittedPoints + " 个字符）");
             response.setStatus(401);
             return "admin/login";
         }
@@ -146,5 +157,19 @@ public class AdminLoginController {
 
     private static String truncate(String value, int max) {
         return value == null || value.length() <= max ? value : value.substring(0, max);
+    }
+
+    /** First 4 bytes of SHA-256, hex — lets us tell "wrong password" from "extra character" without logging the secret. */
+    private static String digestPrefix(String value) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder(8);
+            for (int i = 0; i < 4; i++) {
+                out.append(String.format("%02x", hash[i]));
+            }
+            return out.toString();
+        } catch (java.security.NoSuchAlgorithmException ex) {
+            return "unavailable";
+        }
     }
 }
