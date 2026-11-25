@@ -98,6 +98,7 @@ services:
       TEAHOME_DB_PASSWORD_FILE: /run/secrets/db_app
       TEAHOME_CRAWL_ENABLED: "true"
       TEAHOME_SCHEDULING_ENABLED: "true"
+      TEAHOME_OPS_SCHEDULED: "false"
       TEAHOME_HIKARI_LEAK_MS: "0"
       TZ: UTC
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -XX:-UsePerfData"
@@ -128,11 +129,13 @@ services:
       TEAHOME_ADMIN_BIND: 127.0.0.1
       TEAHOME_ADMIN_PORT: "18081"
       TEAHOME_CRAWL_ENABLED: "false"
-      TEAHOME_SCHEDULING_ENABLED: "false"
+      TEAHOME_SCHEDULING_ENABLED: "true"
+      TEAHOME_OPS_SCHEDULED: "true"
       TZ: UTC
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:+UseSerialGC -XX:-UsePerfData"
     secrets: [db_app]
     command: ["--spring.profiles.active=admin"]
+    volumes: ["/opt/teahome/images:/data/images"]
     read_only: true
     tmpfs: ["/tmp:size=64m,mode=1777"]
     cap_drop: [ALL]
@@ -161,6 +164,7 @@ services:
       TEAHOME_DB_PASSWORD_FILE: /run/secrets/db_app
       TEAHOME_CRAWL_ENABLED: "true"
       TEAHOME_SCHEDULING_ENABLED: "false"
+      TEAHOME_OPS_SCHEDULED: "false"
       TZ: UTC
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -XX:-UsePerfData"
     secrets: [db_app]

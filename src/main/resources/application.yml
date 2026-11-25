@@ -28,6 +28,8 @@ server:
 
 teahome:
   scheduling-enabled: ${TEAHOME_SCHEDULING_ENABLED:true}
+  ops:
+    scheduled: ${TEAHOME_OPS_SCHEDULED:${TEAHOME_SCHEDULING_ENABLED:true}}
   token:
     bootstrap: ${TEAHOME_BOOTSTRAP_TOKEN:}
   image:

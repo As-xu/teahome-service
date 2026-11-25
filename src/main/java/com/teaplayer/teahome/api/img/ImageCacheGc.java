@@ -24,19 +24,51 @@ public class ImageCacheGc {
     private final JdbcClient jdbc;
     private final ConfigService config;
     private final Path root;
+    private final boolean opsScheduled;
 
     public ImageCacheGc(JdbcClient jdbc, ConfigService config,
-                        @Value("${teahome.image.dir:/data/images}") String root) {
+                        @Value("${teahome.image.dir:/data/images}") String root,
+                        @Value("${teahome.ops.scheduled:true}") boolean opsScheduled) {
         this.jdbc = jdbc;
         this.config = config;
         this.root = Path.of(root).toAbsolutePath().normalize();
+        this.opsScheduled = opsScheduled;
+    }
+
+    /** 一次清理的结果；管理端立即清理入口直接展示这些数字。 */
+    public record GcResult(int scanned, int deleted, long remainingBytes, long maxBytes, int ttlDays) {
     }
 
     @Scheduled(cron = "0 20 3 * * *", zone = "Asia/Shanghai")
-    public void run() {
-        int ttlDays = config.intValue("image.cache_ttl_days", 30);
-        long maxBytes = config.longValue("image.cache_max_bytes", 20L * 1024 * 1024 * 1024);
-        OffsetDateTime cutoff = OffsetDateTime.now().minusDays(ttlDays);
+    public void scheduled() {
+        if (!opsScheduled) {
+            return;
+        }
+        try {
+            GcResult result = runNow();
+            if (result.deleted() > 0) {
+                log.info("封面缓存清理完成 deleted={} remainingBytes={} maxBytes={} ttlDays={}",
+                        result.deleted(), result.remainingBytes(), result.maxBytes(), result.ttlDays());
+            }
+        } catch (RuntimeException e) {
+            log.warn("封面缓存清理失败 error={}", e.toString());
+        }
+    }
+
+    /** 当前生效的保留天数，供管理端展示。 */
+    public int ttlDays() {
+        return config.intValue("image.cache_ttl_days", 30);
+    }
+
+    /** 当前生效的容量上限，供管理端展示。 */
+    public long maxBytes() {
+        return config.longValue("image.cache_max_bytes", 20L * 1024 * 1024 * 1024);
+    }
+
+    public GcResult runNow() {
+        int days = ttlDays();
+        long maxBytes = maxBytes();
+        OffsetDateTime cutoff = OffsetDateTime.now().minusDays(days);
         List<Row> rows = jdbc.sql("""
                         SELECT image_key, file_path, bytes, fetched_at
                           FROM teaplayer_image_cache
@@ -60,10 +92,7 @@ public class ImageCacheGc {
                 deleted++;
             }
         }
-        if (deleted > 0) {
-            log.info("封面缓存清理完成 deleted={} remainingBytes={} maxBytes={} ttlDays={}",
-                    deleted, total, maxBytes, ttlDays);
-        }
+        return new GcResult(rows.size(), deleted, total, maxBytes, days);
     }
 
     private boolean remove(Row row) {

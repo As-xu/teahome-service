@@ -8,14 +8,19 @@ import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.context.annotation.Profile;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 /** Database-backed opaque admin sessions; only SHA-256 hashes are stored. */
 @Service
 @Profile("admin")
 public class AdminSessionService {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminSessionService.class);
 
     public record Issued(AdminSessionInfo info, String token, String csrfToken) {
     }
@@ -132,6 +137,19 @@ public class AdminSessionService {
                  WHERE expires_at < now()
                     OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '7 days')
                 """).update();
+    }
+
+    /** 独立定时清理，避免只有登录时才回收过期会话行。 */
+    @Scheduled(cron = "0 17 * * * *", zone = "Asia/Shanghai")
+    public void purgeScheduled() {
+        try {
+            int deleted = purgeExpired();
+            if (deleted > 0) {
+                log.info("过期管理会话清理 deleted={}", deleted);
+            }
+        } catch (RuntimeException e) {
+            log.warn("过期管理会话清理失败 error={}", e.toString());
+        }
     }
 
     private Optional<AdminSessionInfo> find(String tokenHash) {
