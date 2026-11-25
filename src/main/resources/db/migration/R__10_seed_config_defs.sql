@@ -43,6 +43,8 @@ VALUES
      'runtime', 'hot', false, false, false, '图片接口每分钟上限', 'api', 190),
     ('system.public_base_url', 'system', 'url', '"http://192.168.5.156:18080"'::jsonb, '{}'::jsonb,
      'runtime', 'hot', false, false, false, '对外基础 URL', 'system', 200),
+    ('logging.audit_retention_days', 'logging', 'int', '180'::jsonb, '{"min":30,"max":3650}'::jsonb,
+     'runtime', 'hot', false, false, false, '审计日志保留天数（append-only 表由受控函数清理）', 'system', 205),
     ('logging.level', 'logging', 'string', '"INFO"'::jsonb, '{}'::jsonb,
      'runtime', 'hot', false, false, false, '日志级别', 'system', 210),
     ('system.webhook_secret', 'system', 'secret', '""'::jsonb, '{}'::jsonb,

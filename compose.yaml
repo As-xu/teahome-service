@@ -103,6 +103,7 @@ services:
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -XX:-UsePerfData"
     secrets: [db_app]
     command: ["--spring.main.web-application-type=none"]
+    volumes: ["/opt/teahome/data/images:/data/images"]
     read_only: true
     tmpfs: ["/tmp:size=64m,mode=1777"]
     cap_drop: [ALL]

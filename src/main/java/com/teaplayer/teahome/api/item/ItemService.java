@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
 import com.teaplayer.teahome.api.ApiException;
+import com.teaplayer.teahome.api.TtlCache;
 import com.teaplayer.teahome.crawl.CategoryClassifier;
 import com.teaplayer.teahome.crawl.MacCmsClient;
 import com.teaplayer.teahome.crawl.PlayUrlParser;
@@ -29,6 +30,8 @@ public class ItemService {
     private final SourceRepository sources;
     private final MacCmsClient client;
     private final CategoryClassifier classifier;
+    private final TtlCache<String, String> misses = new TtlCache<>(60_000, 2000);
+    private final java.util.concurrent.Semaphore livePermits = new java.util.concurrent.Semaphore(4);
 
     public ItemService(JdbcClient jdbc, SourceRepository sources, MacCmsClient client,
                        CategoryClassifier classifier) {
@@ -39,6 +42,10 @@ public class ItemService {
     }
 
     public ItemDtos.ItemDetail detail(String sourceId, String itemId) {
+        if (sourceId == null || !sourceId.matches("[a-z0-9_-]{1,32}")
+                || itemId == null || !itemId.matches("\\d{1,20}")) {
+            throw ApiException.notFound("资源不存在");
+        }
         ItemRow item = loadItem(sourceId, itemId);
         if (item != null) {
             if (!"active".equals(item.status())) {
@@ -49,7 +56,35 @@ public class ItemService {
             }
             return fromDb(item);
         }
-        return fromLive(sourceId, itemId);
+        String cacheKey = sourceId + ":" + itemId;
+        String miss = misses.get(cacheKey);
+        if ("not_found".equals(miss)) {
+            throw ApiException.notFound("未找到资源: " + itemId);
+        }
+        if ("busy".equals(miss)) {
+            throw ApiException.upstream("详情服务繁忙");
+        }
+        boolean acquired;
+        try {
+            acquired = livePermits.tryAcquire(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw ApiException.upstream("详情服务中断");
+        }
+        if (!acquired) {
+            misses.put(cacheKey, "busy");
+            throw ApiException.upstream("详情服务繁忙");
+        }
+        try {
+            return fromLive(sourceId, itemId);
+        } catch (ApiException e) {
+            if (e.status() == 404) {
+                misses.put(cacheKey, "not_found");
+            }
+            throw e;
+        } finally {
+            livePermits.release();
+        }
     }
 
     private ItemDtos.ItemDetail fromDb(ItemRow item) {
