@@ -33,6 +33,33 @@ class AdminCsrfFilterTest {
     }
 
     @Test
+    void allowsLoginPostWithLiteralNullOrigin() throws Exception {
+        MockHttpServletRequest request = post("/admin/login");
+        request.addHeader("Origin", "null");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void allowsLoginPostWithEmptyOrigin() throws Exception {
+        MockHttpServletRequest request = post("/admin/login");
+        request.addHeader("Origin", "");
+        request.addHeader("Referer", "");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
     void rejectsMismatchedOrigin() throws Exception {
         MockHttpServletRequest request = post("/admin/login");
         request.addHeader("Origin", "http://evil.example");
