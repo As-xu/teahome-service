@@ -167,7 +167,21 @@ public class ItemService {
         if (episodes.isEmpty()) {
             return Map.of();
         }
-        String referer = originOf(episodes.get(0).url());
+        // 一条线路只能写一份 Referer。分集跨 origin 时（不同 CDN / 一部分是另一个
+        // 站点的直链）没有「正确的那一个」，宁可不下发，让客户端沿用源站规则或
+        // 自己从分享页学——错配的 Referer 只会制造 403。
+        String referer = null;
+        for (ItemDtos.Episode e : episodes) {
+            String origin = originOf(e.url());
+            if (origin == null) {
+                return Map.of();
+            }
+            if (referer == null) {
+                referer = origin;
+            } else if (!referer.equals(origin)) {
+                return Map.of();
+            }
+        }
         if (referer == null) {
             return Map.of();
         }

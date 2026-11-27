@@ -29,9 +29,11 @@ public final class ItemDtos {
      *
      * <ul>
      *   <li>{@code headers}：播放该线路时要带的请求头（当前按分集 URL 的
-     *       origin 推 Referer + 一个桌面 UA；源站自带规则时以源站规则为准）；</li>
-     *   <li>{@code hosts}：这条线路会碰到的全部主机（含 CDN），客户端据此在
-     *       本次会话里放行，不必等 403 再学；</li>
+     *       origin 推 Referer + 一个桌面 UA；**分集跨 origin 时为空**，因为一条
+     *       线路只能写一份 Referer，错配只会制造 403）；</li>
+     *   <li>{@code hosts}：这条线路会碰到的全部主机（含 CDN）。它只用于按主机
+     *       匹配播放头规则，**不是**客户端的出网白名单——客户端不得据此放行
+     *       任意地址，否则上游内容就成了放行依据；</li>
      *   <li>{@code ttlSeconds}：签名地址的剩余有效期。当前源站下发的是长期有效
      *       的直链，故为 null；将来接入签名 CDN 时由这里给出。</li>
      * </ul>

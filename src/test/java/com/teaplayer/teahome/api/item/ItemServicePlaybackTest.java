@@ -28,6 +28,23 @@ class ItemServicePlaybackTest {
     }
 
     @Test
+    void mixedOriginsYieldNoHeaders() {
+        // 一条线路只能写一份 Referer；跨 origin 时不下发，免得错配成 403。
+        var headers = ItemService.playbackHeaders(List.of(
+                ep(1, "https://a.example.com/1.m3u8"),
+                ep(2, "https://b.example.com/2.m3u8")));
+        assertThat(headers).isEmpty();
+    }
+
+    @Test
+    void sameOriginEpisodesShareHeaders() {
+        var headers = ItemService.playbackHeaders(List.of(
+                ep(1, "https://a.example.com/1.m3u8"),
+                ep(2, "https://a.example.com/2.m3u8")));
+        assertThat(headers).containsEntry("referer", "https://a.example.com/");
+    }
+
+    @Test
     void emptyEpisodeListYieldsNoHeaders() {
         assertThat(ItemService.playbackHeaders(List.of())).isEmpty();
     }
