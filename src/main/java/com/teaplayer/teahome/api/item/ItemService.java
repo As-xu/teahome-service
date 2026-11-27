@@ -4,8 +4,10 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,11 @@ import com.teaplayer.teahome.crawl.TitleNormalizer;
 public class ItemService {
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
+
+    /** 与客户端 `SafeHttpClient` 的默认 UA 保持一致：源站只认「像浏览器」的 UA。 */
+    private static final String PLAYBACK_UA =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
     private final JdbcClient jdbc;
     private final SourceRepository sources;
@@ -102,8 +109,9 @@ public class ItemService {
         Map<Long, List<ItemDtos.Episode>> episodes = episodes(lineRows);
         List<ItemDtos.Line> lines = new ArrayList<>(lineRows.size());
         for (LineRow line : lineRows) {
-            lines.add(new ItemDtos.Line(line.from(), line.protocol(), line.primary(),
-                    episodes.getOrDefault(line.id(), List.of())));
+            List<ItemDtos.Episode> eps = episodes.getOrDefault(line.id(), List.of());
+            lines.add(new ItemDtos.Line(line.from(), line.protocol(), line.primary(), eps,
+                    playbackHeaders(eps), playbackHosts(eps), null));
         }
 
         return new ItemDtos.ItemDetail(item.mergeKey(), item.title(), item.year(), item.categoryCodes(),
@@ -141,12 +149,66 @@ public class ItemService {
             }
             String protocol = line.episodes().isEmpty() ? "unknown"
                     : PlayUrlParser.protocol(line.episodes().get(0).url());
-            lines.add(new ItemDtos.Line(line.from(), protocol, i == primaryIndex, episodes));
+            lines.add(new ItemDtos.Line(line.from(), protocol, i == primaryIndex, episodes,
+                    playbackHeaders(episodes), playbackHosts(episodes), null));
         }
         String key = TitleNormalizer.mergeKey(raw.title(), raw.year());
         return new ItemDtos.ItemDetail(key, raw.title(), parseYear(raw.year()), category.codes(),
                 category.primary(), null, null, raw.remark(), "live",
                 null, null, lines, List.of());
+    }
+
+    /**
+     * 播放请求头：按分集地址的 origin 推一个 Referer（分享页型源站最常见的门槛），
+     * 并盖上一个桌面 UA。**只做兜底**——客户端有源站规格时以规格为准，
+     * 这里给的是「客户端没有本地规则也能起播」的最小集合。
+     */
+    static Map<String, String> playbackHeaders(List<ItemDtos.Episode> episodes) {
+        if (episodes.isEmpty()) {
+            return Map.of();
+        }
+        String referer = originOf(episodes.get(0).url());
+        if (referer == null) {
+            return Map.of();
+        }
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("referer", referer + "/");
+        headers.put("user_agent", PLAYBACK_UA);
+        return Map.copyOf(headers);
+    }
+
+    /** 这条线路会碰到的全部主机（去重保序），客户端据此在会话内放行。 */
+    static List<String> playbackHosts(List<ItemDtos.Episode> episodes) {
+        Set<String> hosts = new LinkedHashSet<>();
+        for (ItemDtos.Episode e : episodes) {
+            String host = hostOf(e.url());
+            if (host != null) {
+                hosts.add(host);
+            }
+        }
+        return List.copyOf(hosts);
+    }
+
+    private static String originOf(String url) {
+        try {
+            java.net.URI uri = java.net.URI.create(url);
+            if (uri.getScheme() == null || uri.getHost() == null) {
+                return null;
+            }
+            return uri.getScheme() + "://" + uri.getHost()
+                    + (uri.getPort() > 0 ? ":" + uri.getPort() : "");
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    static String hostOf(String url) {
+        try {
+            String host = java.net.URI.create(url).getHost();
+            return host == null || host.isBlank() ? null : host.toLowerCase(java.util.Locale.ROOT);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private ItemRow loadItem(String sourceId, String itemId) {
