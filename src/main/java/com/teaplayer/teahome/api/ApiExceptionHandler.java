@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -34,7 +35,9 @@ public class ApiExceptionHandler {
     @ExceptionHandler({
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class,
-            IllegalArgumentException.class
+            IllegalArgumentException.class,
+            // JSON body 坏了（不是合法 JSON / 类型不对）是调用方的错，不该记 500。
+            HttpMessageNotReadableException.class
     })
     public ResponseEntity<Map<String, Object>> badRequest(Exception e, HttpServletRequest request) {
         return build(400, "bad_request", "请求参数不正确", null, request);
