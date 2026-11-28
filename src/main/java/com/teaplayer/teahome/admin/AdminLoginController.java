@@ -1,7 +1,5 @@
 package com.teaplayer.teahome.admin;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
@@ -80,12 +78,12 @@ public class AdminLoginController {
         boolean ok = user.isPresent() && "active".equals(user.get().status()) && passwordOk;
         if (!ok) {
             throttle.failure(ip);
+            // 只记字符数：够定位「多一个空格/少一位」这类输入问题，又不留任何口令派生值。
             int submittedPoints = password.codePointCount(0, password.length());
-            String digest = digestPrefix(password);
-            log.warn("admin 登录失败 username={} passwordCodePoints={} passwordSha256Prefix={} ip={}",
-                    username, submittedPoints, digest, ip);
+            log.warn("admin 登录失败 username={} passwordCodePoints={} ip={}",
+                    username, submittedPoints, ip);
             audit.denied(username, "admin.login", "admin_user", username,
-                    "bad credentials codePoints=" + submittedPoints + " sha256=" + digest, request, "bad_credentials");
+                    "bad credentials codePoints=" + submittedPoints, request, "bad_credentials");
             model.addAttribute("userCount", users);
             model.addAttribute("error", "用户名或密码错误（本次提交 " + submittedPoints + " 个字符）");
             response.setStatus(401);
@@ -157,19 +155,5 @@ public class AdminLoginController {
 
     private static String truncate(String value, int max) {
         return value == null || value.length() <= max ? value : value.substring(0, max);
-    }
-
-    /** First 4 bytes of SHA-256, hex — lets us tell "wrong password" from "extra character" without logging the secret. */
-    private static String digestPrefix(String value) {
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder out = new StringBuilder(8);
-            for (int i = 0; i < 4; i++) {
-                out.append(String.format("%02x", hash[i]));
-            }
-            return out.toString();
-        } catch (java.security.NoSuchAlgorithmException ex) {
-            return "unavailable";
-        }
     }
 }
