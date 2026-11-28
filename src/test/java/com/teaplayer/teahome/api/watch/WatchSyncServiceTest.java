@@ -35,7 +35,7 @@ class WatchSyncServiceTest {
         WatchDtos.ProgressItem clean = service.normalizeProgress(
                 progress(Map.of("2", List.of(123_000L, 2_700_000L))));
         assertThat(clean.key()).isEqualTo("src-a|item-9");
-        assertThat(clean.deleted()).isFalse();
+        assertThat(WatchDtos.deletedOf(clean.deleted())).isFalse();
         assertThat(clean.updatedAt()).isEqualTo("2026-11-28T13:00:00Z");
         assertThat(clean.episodes()).containsEntry("2", List.of(123_000L, 2_700_000L));
     }

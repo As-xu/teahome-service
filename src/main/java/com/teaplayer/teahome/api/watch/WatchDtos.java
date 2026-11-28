@@ -17,6 +17,11 @@ public final class WatchDtos {
     private WatchDtos() {
     }
 
+    /** 客户端可以不传 `deleted`（新建/更新都是如此）：缺席按 false 读。 */
+    public static boolean deletedOf(Boolean deleted) {
+        return deleted != null && deleted;
+    }
+
     /** 一条观看进度。`episodes` 键是集号、值是 `[位置, 时长]`，与客户端落盘同形。 */
     public record ProgressItem(
             String key,
@@ -30,7 +35,9 @@ public final class WatchDtos {
             Long duration,
             Map<String, List<Long>> episodes,
             String updatedAt,
-            boolean deleted) {
+            // 装箱不是随手写的：Jackson 3 默认开着 FAIL_ON_NULL_FOR_PRIMITIVES，
+            // 客户端不传 deleted 就会整条 400。null 当 false，见 deletedOf。
+            Boolean deleted) {
     }
 
     public record ProgressList(List<ProgressItem> items, String serverTime) {
@@ -49,7 +56,7 @@ public final class WatchDtos {
             String remark,
             String addedAt,
             String updatedAt,
-            boolean deleted) {
+            Boolean deleted) {
     }
 
     public record FavoriteList(List<FavoriteItem> items, String serverTime) {
